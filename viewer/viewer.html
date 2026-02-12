@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recall - Snapshot Viewer</title>
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+  <!-- Collapsible Info Bar -->
+  <div id="info-bar" class="info-bar">
+    <div class="info-bar-content">
+      <div class="info-left">
+        <img id="favicon" class="favicon" src="" alt="" width="16" height="16">
+        <span class="badge" id="capture-type-badge">auto</span>
+        <a id="original-url" class="original-url" href="#" target="_blank" rel="noopener noreferrer" title="Open original page"></a>
+      </div>
+      <div class="info-center">
+        <span id="snapshot-title" class="snapshot-title"></span>
+        <span class="separator">|</span>
+        <span id="snapshot-date" class="snapshot-date"></span>
+        <span class="separator">|</span>
+        <span id="snapshot-size" class="snapshot-size"></span>
+        <span class="separator">|</span>
+        <span id="snapshot-tags" class="snapshot-tags"></span>
+      </div>
+      <div class="info-right">
+        <button id="btn-flow-prev" class="btn btn-icon btn-flow-nav hidden" title="Previous in flow">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <span id="flow-position" class="flow-position hidden"></span>
+        <button id="btn-flow-next" class="btn btn-icon btn-flow-nav hidden" title="Next in flow">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <span class="separator flow-nav-sep hidden" id="flow-nav-sep">|</span>
+        <span id="theme-toggle-container"></span>
+        <button id="btn-original" class="btn btn-icon" title="Open original page">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3H3v10h10v-3M9 3h4v4M14 2L7 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button id="btn-export" class="btn btn-icon" title="Export as MHTML">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M4 7l4 4 4-4M3 12v1h10v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button id="btn-notes" class="btn btn-icon" title="Toggle notes panel">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 2h10a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.5"/><path d="M5 5h6M5 8h6M5 11h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+        <button id="btn-annotations" class="btn btn-icon" title="Toggle annotations panel">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 10.5V14h3.5L13 6.5 9.5 3 2 10.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9.5 3l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+        <button id="btn-star" class="btn btn-icon" title="Star this snapshot">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1l2.2 4.4L15 6l-3.5 3.4.8 4.8L8 12l-4.3 2.2.8-4.8L1 6l4.8-.6L8 1z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        </button>
+        <button id="btn-delete" class="btn btn-icon btn-danger" title="Delete this snapshot">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1M6 7v5M10 7v5M4 4l.8 9a1 1 0 001 .9h4.4a1 1 0 001-.9L12 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button id="btn-collapse" class="btn btn-icon" title="Hide info bar">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 10l4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating expand button (visible when info bar is hidden) -->
+  <button id="btn-expand" class="btn-expand hidden" title="Show info bar">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Recall
+  </button>
+
+  <!-- Notes Panel (collapsible, right side) -->
+  <div id="notes-panel" class="notes-panel hidden">
+    <div class="notes-header">
+      <span>Notes</span>
+      <button id="btn-close-notes" class="btn btn-icon btn-sm" title="Close notes">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <textarea id="notes-textarea" class="notes-textarea" placeholder="Add notes about this snapshot..."></textarea>
+    <div class="notes-footer">
+      <span id="notes-status" class="notes-status"></span>
+    </div>
+  </div>
+
+  <!-- Annotations Panel (collapsible, right side) -->
+  <div id="annotations-panel" class="annotations-panel hidden">
+    <div class="annotations-header">
+      <span>Annotations</span>
+      <button id="btn-close-annotations" class="btn btn-icon btn-sm" title="Close annotations">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="annotations-hint">Select text in the snapshot to highlight it</div>
+    <div id="annotations-list" class="annotations-list"></div>
+    <div id="annotations-empty" class="annotations-empty">No annotations yet</div>
+  </div>
+
+  <!-- Floating annotation toolbar (appears on text selection in iframe) -->
+  <div id="annotation-toolbar" class="annotation-toolbar hidden">
+    <button class="ann-color-btn" data-color="#fef08a" title="Yellow" style="background:#fef08a"></button>
+    <button class="ann-color-btn" data-color="#bbf7d0" title="Green" style="background:#bbf7d0"></button>
+    <button class="ann-color-btn" data-color="#bfdbfe" title="Blue" style="background:#bfdbfe"></button>
+    <button class="ann-color-btn" data-color="#fecaca" title="Red" style="background:#fecaca"></button>
+    <button class="ann-color-btn" data-color="#e9d5ff" title="Purple" style="background:#e9d5ff"></button>
+  </div>
+
+  <!-- Snapshot content iframe -->
+  <iframe id="snapshot-frame" class="snapshot-frame" sandbox="allow-same-origin" frameborder="0"></iframe>
+
+  <!-- Loading overlay -->
+  <div id="loading" class="loading">
+    <div class="loading-spinner"></div>
+    <p>Loading snapshot...</p>
+  </div>
+
+  <!-- Error overlay -->
+  <div id="error" class="error hidden">
+    <h2>Snapshot not found</h2>
+    <p id="error-message"></p>
+    <button id="btn-back" class="btn btn-primary">Open Manager</button>
+  </div>
+
+  <script src="viewer.js" type="module"></script>
+</body>
+</html>

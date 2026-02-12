@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recall</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup">
+    <div class="popup-header">
+      <h1>Recall</h1>
+      <span style="display:flex;align-items:center;gap:6px">
+        <span id="theme-toggle-container"></span>
+        <span id="snapshot-count" class="count-badge">0</span>
+      </span>
+    </div>
+
+    <div class="popup-actions">
+      <button id="btn-capture" class="btn btn-primary btn-full">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="3" fill="currentColor"/></svg>
+        Capture This Page
+      </button>
+
+      <button id="btn-deep-capture" class="btn btn-secondary btn-full">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8a6 6 0 1112 0A6 6 0 012 8z" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Deep Capture (CDP)
+      </button>
+
+      <button id="btn-watch-page" class="btn btn-secondary btn-full">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3C4.5 3 1.5 8 1.5 8s3 5 6.5 5 6.5-5 6.5-5-3-5-6.5-5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.5"/></svg>
+        Watch This Page
+      </button>
+    </div>
+
+    <div class="popup-divider"></div>
+
+    <div class="popup-nav">
+      <button id="btn-sidepanel" class="btn btn-ghost btn-full">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M10 2v12" stroke="currentColor" stroke-width="1.5"/></svg>
+        Open Side Panel
+      </button>
+
+      <button id="btn-manager" class="btn btn-ghost btn-full">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
+        Snapshot Manager
+      </button>
+
+      <button id="btn-settings" class="btn btn-ghost btn-full">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6L13 13M13 3l-1.4 1.4M4.4 11.6L3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        Settings
+      </button>
+    </div>
+
+    <div class="popup-divider"></div>
+
+    <div class="popup-footer">
+      <div class="auto-capture-toggle">
+        <label class="toggle-label">
+          <span>Auto-Capture</span>
+          <input type="checkbox" id="toggle-auto" class="toggle-input">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="storage-info">
+        <div class="storage-bar">
+          <div id="storage-fill" class="storage-fill" style="width:0%"></div>
+        </div>
+        <span id="storage-text" class="storage-text">Loading...</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

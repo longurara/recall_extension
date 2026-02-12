@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Recall Sandbox</title>
+  <style>
+    * { margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: auto; }
+  </style>
+</head>
+<body>
+  <script>
+    // Sandboxed page: receives HTML content via postMessage
+    window.addEventListener('message', function(event) {
+      if (event.data && event.data.type === 'LOAD_SNAPSHOT') {
+        document.open();
+        document.write(event.data.html);
+        document.close();
+
+        // Restore scroll
+        if (event.data.scrollY) {
+          window.scrollTo(0, event.data.scrollY);
+        }
+      }
+    });
+  </script>
+</body>
+</html>

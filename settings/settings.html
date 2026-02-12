@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recall - Settings</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <div class="settings-page">
+    <div class="settings-header">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <h1>Recall Settings</h1>
+        <span id="theme-toggle-container"></span>
+      </div>
+      <p>Configure how Recall captures and stores web page snapshots.</p>
+    </div>
+
+    <div class="settings-sections">
+      <!-- Capture Settings -->
+      <section class="section">
+        <h2>Capture</h2>
+        <div class="setting-row">
+          <div class="setting-info">
+            <label>Auto-Capture</label>
+            <p>Automatically capture pages when you visit them.</p>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="autoCapture">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <label for="captureDelay">Capture Delay</label>
+            <p>Wait time (ms) after page loads before capturing. Higher values help with SPAs.</p>
+          </div>
+          <input type="number" id="captureDelay" class="input-number" min="500" max="30000" step="500">
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <label for="duplicateWindowMinutes">Duplicate Window</label>
+            <p>Skip capturing the same URL if already captured within this time (minutes).</p>
+          </div>
+          <input type="number" id="duplicateWindowMinutes" class="input-number" min="1" max="1440" step="1">
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <label for="maxSnapshotSizeMB">Max Snapshot Size (MB)</label>
+            <p>Skip pages larger than this size after serialization.</p>
+          </div>
+          <input type="number" id="maxSnapshotSizeMB" class="input-number" min="1" max="100" step="1">
+        </div>
+      </section>
+
+      <!-- Storage Settings -->
+      <section class="section">
+        <h2>Storage</h2>
+
+        <div class="storage-status">
+          <div class="storage-bar-lg">
+            <div id="storage-fill" class="storage-fill" style="width: 0%"></div>
+          </div>
+          <div class="storage-stats">
+            <span id="storage-used">0 B</span>
+            <span id="storage-max">/ 2 GB</span>
+            <span id="storage-count">(0 snapshots)</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <label for="maxStorageMB">Storage Limit (MB)</label>
+            <p>Maximum storage for all snapshots. Set 0 for unlimited (limited by disk space).</p>
+          </div>
+          <input type="number" id="maxStorageMB" class="input-number" min="0" max="102400" step="256">
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <label>Auto-Cleanup</label>
+            <p>Automatically delete oldest non-starred snapshots when storage is nearly full.</p>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="autoCleanupEnabled">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <label for="autoCleanupThreshold">Cleanup Threshold (%)</label>
+            <p>Start auto-cleanup when storage usage reaches this percentage.</p>
+          </div>
+          <input type="number" id="autoCleanupThreshold" class="input-number" min="50" max="99" step="1">
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <label for="autoCleanupDays">Delete Auto-Captures After (days)</label>
+            <p>Automatically delete auto-captured snapshots older than this many days. Manual and starred snapshots are never deleted. Set 0 to disable.</p>
+          </div>
+          <input type="number" id="autoCleanupDays" class="input-number" min="0" max="3650" step="1">
+        </div>
+      </section>
+
+      <!-- Exclusions -->
+      <section class="section">
+        <h2>Exclusions</h2>
+        <div class="setting-row vertical">
+          <div class="setting-info">
+            <label for="excludeDomains">Excluded Domains</label>
+            <p>Pages from these domains will not be auto-captured. One domain per line.</p>
+          </div>
+          <textarea id="excludeDomains" class="input-textarea" rows="6" placeholder="example.com&#10;private.internal.com"></textarea>
+        </div>
+      </section>
+
+      <!-- Thumbnail Settings -->
+      <section class="section">
+        <h2>Thumbnails</h2>
+        <div class="setting-row">
+          <div class="setting-info">
+            <label for="thumbnailQuality">JPEG Quality</label>
+            <p>Thumbnail image quality (0.1 - 1.0). Lower = smaller files.</p>
+          </div>
+          <input type="number" id="thumbnailQuality" class="input-number" min="0.1" max="1" step="0.1">
+        </div>
+      </section>
+
+      <!-- Data Management -->
+      <section class="section">
+        <h2>Data Management</h2>
+        <div class="setting-row">
+          <div class="setting-info">
+            <label>Export All Data</label>
+            <p>Export all snapshot metadata as JSON (data not included due to size).</p>
+          </div>
+          <button id="btn-export-data" class="btn btn-secondary">Export Metadata</button>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <label>Delete All Snapshots</label>
+            <p>Permanently delete all captured snapshots. This cannot be undone.</p>
+          </div>
+          <button id="btn-delete-all" class="btn btn-danger">Delete All</button>
+        </div>
+      </section>
+
+      <!-- About -->
+      <section class="section">
+        <h2>About</h2>
+        <div class="about-info">
+          <p><strong>Recall - Web Page Snapshots</strong></p>
+          <p>Version 1.0.0</p>
+          <p>Automatically save and recall web pages. View snapshots anytime, even offline.</p>
+          <p class="shortcuts-info">
+            <strong>Keyboard Shortcuts:</strong><br>
+            <code>Ctrl+Shift+S</code> - Capture current page<br>
+            <code>Ctrl+Shift+R</code> - Open Manager
+          </p>
+        </div>
+      </section>
+    </div>
+
+    <!-- Save Bar -->
+    <div id="save-bar" class="save-bar hidden">
+      <span>You have unsaved changes</span>
+      <div class="save-actions">
+        <button id="btn-discard" class="btn btn-ghost-sm">Discard</button>
+        <button id="btn-save" class="btn btn-primary-sm">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="settings.js" type="module"></script>
+</body>
+</html>

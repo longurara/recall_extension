@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recall - Page Diff</title>
+  <link rel="stylesheet" href="diff.css">
+</head>
+<body>
+  <!-- Header -->
+  <div class="diff-header">
+    <div class="diff-header-left">
+      <h1 class="logo">Recall</h1>
+      <span class="subtitle">Page Diff</span>
+    </div>
+    <div class="diff-header-center">
+      <div class="diff-mode-toggle">
+        <button id="btn-side-by-side" class="btn btn-mode active">Side by Side</button>
+        <button id="btn-text-diff" class="btn btn-mode">Text Diff</button>
+      </div>
+    </div>
+    <div class="diff-header-right">
+      <span id="theme-toggle-container"></span>
+      <button id="btn-back" class="btn btn-ghost">Back to Manager</button>
+    </div>
+  </div>
+
+  <!-- Snapshot Info Row -->
+  <div class="diff-info-row">
+    <div class="diff-info-left">
+      <span class="diff-label">LEFT</span>
+      <span id="left-title" class="diff-snapshot-title"></span>
+      <span id="left-date" class="diff-snapshot-date"></span>
+    </div>
+    <div class="diff-info-right">
+      <span class="diff-label">RIGHT</span>
+      <span id="right-title" class="diff-snapshot-title"></span>
+      <span id="right-date" class="diff-snapshot-date"></span>
+    </div>
+  </div>
+
+  <!-- Side-by-Side View -->
+  <div id="side-by-side-view" class="side-by-side-view">
+    <div class="pane left-pane">
+      <iframe id="left-frame" class="diff-frame" sandbox="allow-same-origin" frameborder="0"></iframe>
+    </div>
+    <div class="diff-divider" id="diff-divider"></div>
+    <div class="pane right-pane">
+      <iframe id="right-frame" class="diff-frame" sandbox="allow-same-origin" frameborder="0"></iframe>
+    </div>
+  </div>
+
+  <!-- Text Diff View -->
+  <div id="text-diff-view" class="text-diff-view hidden">
+    <div id="diff-stats" class="diff-stats"></div>
+    <div id="diff-content" class="diff-content"></div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading" class="loading">
+    <div class="loading-spinner"></div>
+    <p>Loading snapshots for comparison...</p>
+  </div>
+
+  <!-- Error -->
+  <div id="error" class="error hidden">
+    <h2>Comparison Error</h2>
+    <p id="error-message"></p>
+    <button id="btn-error-back" class="btn btn-primary">Back to Manager</button>
+  </div>
+
+  <script src="diff.js" type="module"></script>
+</body>
+</html>

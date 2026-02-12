@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recall - Snapshot Manager</title>
+  <link rel="stylesheet" href="manager.css">
+</head>
+<body>
+  <!-- Top Bar -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <h1 class="logo">Recall</h1>
+      <span class="subtitle">Snapshot Manager</span>
+    </div>
+    <div class="topbar-right">
+      <button id="btn-settings" class="btn btn-ghost">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6L13 13M13 3l-1.4 1.4M4.4 11.6L3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        Settings
+      </button>
+    </div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <div class="search-box">
+        <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5L15 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input id="search-input" type="text" placeholder="Search snapshots..." autocomplete="off">
+        <label class="search-content-toggle" title="Also search page content">
+          <input type="checkbox" id="search-content-check">
+          <span class="toggle-label">Content</span>
+        </label>
+      </div>
+      <select id="filter-domain" class="filter-select">
+        <option value="">All domains</option>
+      </select>
+      <select id="filter-type" class="filter-select">
+        <option value="">All types</option>
+        <option value="auto">Auto</option>
+        <option value="manual">Manual</option>
+        <option value="deep">Deep</option>
+      </select>
+      <select id="filter-tag" class="filter-select">
+        <option value="">All tags</option>
+      </select>
+      <select id="filter-sort" class="filter-select">
+        <option value="newest">Newest first</option>
+        <option value="oldest">Oldest first</option>
+        <option value="largest">Largest first</option>
+        <option value="smallest">Smallest first</option>
+        <option value="title">Title A-Z</option>
+      </select>
+    </div>
+    <div class="toolbar-right">
+      <span id="result-count" class="result-count"></span>
+      <div class="view-toggle">
+        <button id="btn-grid" class="btn btn-view active" title="Grid view">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
+        </button>
+        <button id="btn-list" class="btn btn-view" title="List view">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 3h12M2 8h12M2 13h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+        <button id="btn-flow" class="btn btn-view" title="Flow view">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="3" cy="8" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="13" cy="8" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 8h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M9 5.5L11 8 9 10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button id="btn-watch" class="btn btn-view" title="Watch view">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3C4.5 3 1.5 8 1.5 8s3 5 6.5 5 6.5-5 6.5-5-3-5-6.5-5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.5"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk Actions Bar (hidden by default) -->
+  <div id="bulk-bar" class="bulk-bar hidden">
+    <label class="select-all-label">
+      <input type="checkbox" id="select-all"> Select All
+    </label>
+    <span id="selected-count">0 selected</span>
+    <button id="btn-compare" class="btn btn-compare-sm hidden" title="Compare two snapshots side by side">Compare</button>
+    <button id="btn-delete-selected" class="btn btn-danger-sm">Delete Selected</button>
+    <button id="btn-cancel-select" class="btn btn-ghost-sm">Cancel</button>
+  </div>
+
+  <!-- Snapshot Grid / List -->
+  <div id="snapshot-container" class="snapshot-container grid-view">
+    <!-- Items rendered by JS -->
+  </div>
+
+  <!-- Empty State -->
+  <div id="empty-state" class="empty-state hidden">
+    <svg width="64" height="64" viewBox="0 0 48 48" fill="none"><rect x="4" y="8" width="40" height="32" rx="4" stroke="#ddd" stroke-width="2"/><path d="M4 16h40" stroke="#ddd" stroke-width="2"/><circle cx="10" cy="12" r="1.5" fill="#ddd"/><circle cx="16" cy="12" r="1.5" fill="#ddd"/><circle cx="22" cy="12" r="1.5" fill="#ddd"/></svg>
+    <h2>No snapshots yet</h2>
+    <p>Browse the web and pages will be automatically captured. You can also manually capture pages using the extension popup.</p>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer-bar">
+    <div class="footer-left">
+      <span id="total-info">0 snapshots</span>
+    </div>
+    <div class="footer-center">
+      <div class="storage-bar-lg">
+        <div id="storage-fill" class="storage-fill" style="width: 0%"></div>
+      </div>
+      <span id="storage-text">Loading...</span>
+    </div>
+  </div>
+
+  <script src="manager.js" type="module"></script>
+</body>
+</html>
