@@ -15,7 +15,7 @@
     const imageCache = new Map();    // src → base64
     const pendingImages = new Set(); // src being processed
     let totalCacheBytes = 0;
-    const MAX_CACHE_BYTES = 50 * 1024 * 1024; // 50MB limit
+    const MAX_CACHE_BYTES = 30 * 1024 * 1024; // 30MB limit
     const MAX_IMAGE_DIMENSION = 4096;          // skip huge images (e.g. maps)
     let stats = { imagesObserved: 0, imagesCached: 0, mutationsCount: 0 };
 
@@ -60,6 +60,31 @@
     }
 
     /**
+     * Fetch an image via network and convert to base64 (cross-origin fallback)
+     */
+    async function fetchImageAsBase64(url) {
+        try {
+            const response = await fetch(url, {
+                mode: 'cors',
+                credentials: 'omit',
+                cache: 'force-cache',
+            });
+            if (!response.ok) return null;
+            const blob = await response.blob();
+            if (!blob.type.startsWith('image/')) return null;
+            if (blob.size > 5 * 1024 * 1024) return null;
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = () => resolve(null);
+                reader.readAsDataURL(blob);
+            });
+        } catch {
+            return null;
+        }
+    }
+
+    /**
      * Try to cache an image's base64 representation
      */
     function cacheImage(img) {
@@ -77,7 +102,19 @@
                 totalCacheBytes += base64.length;
                 stats.imagesCached++;
                 evictIfNeeded();
+                return;
             }
+            // Canvas failed (cross-origin) — try fetch fallback
+            pendingImages.add(src);
+            fetchImageAsBase64(src).then((fetched) => {
+                pendingImages.delete(src);
+                if (fetched && !imageCache.has(src)) {
+                    imageCache.set(src, fetched);
+                    totalCacheBytes += fetched.length;
+                    stats.imagesCached++;
+                    evictIfNeeded();
+                }
+            }).catch(() => pendingImages.delete(src));
             return;
         }
 
@@ -92,6 +129,16 @@
                     totalCacheBytes += base64.length;
                     stats.imagesCached++;
                     evictIfNeeded();
+                } else {
+                    // Canvas failed — try fetch fallback
+                    fetchImageAsBase64(src).then((fetched) => {
+                        if (fetched && !imageCache.has(src)) {
+                            imageCache.set(src, fetched);
+                            totalCacheBytes += fetched.length;
+                            stats.imagesCached++;
+                            evictIfNeeded();
+                        }
+                    }).catch(() => { });
                 }
             }
             img.removeEventListener('load', onDone);

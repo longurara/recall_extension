@@ -75,11 +75,35 @@ async function captureScreenshot(tabId) {
     const tab = await chrome.tabs.get(tabId);
     if (!tab || !tab.windowId) return null;
 
-    // Focus the window to ensure we capture the right tab
+    let previousTabId = null;
+
+    // If this tab is not the active tab, temporarily switch to it
+    if (!tab.active) {
+      // Remember the currently active tab so we can restore it
+      const [activeTab] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
+      if (activeTab) {
+        previousTabId = activeTab.id;
+      }
+      // Activate the target tab
+      await chrome.tabs.update(tabId, { active: true });
+      // Small delay to let the tab render
+      await new Promise(resolve => setTimeout(resolve, 150));
+    }
+
+    // Capture the screenshot
     const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
       format: 'jpeg',
       quality: 60,
     });
+
+    // Restore the previously active tab if we switched
+    if (previousTabId !== null) {
+      try {
+        await chrome.tabs.update(previousTabId, { active: true });
+      } catch {
+        // Previous tab may have been closed
+      }
+    }
 
     return dataUrl;
   } catch (error) {
@@ -137,11 +161,13 @@ async function createThumbnailDataUrl(dataUrl, maxWidth = 320, maxHeight = 200) 
 async function blobToDataUrl(blob) {
   const buffer = await blob.arrayBuffer();
   const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  // Use chunk-based approach to avoid O(n²) string concatenation
+  const chunkSize = 8192;
+  const chunks = [];
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize)));
   }
-  return `data:${blob.type || 'image/jpeg'};base64,${btoa(binary)}`;
+  return `data:${blob.type || 'image/jpeg'};base64,${btoa(chunks.join(''))}`;
 }
 
 /**

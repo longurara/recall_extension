@@ -38,10 +38,11 @@
         // Create overlay for visual region selection
         clipperOverlay = document.createElement('div');
         clipperOverlay.id = 'recall-clipper-overlay';
+        clipperOverlay.setAttribute('tabindex', '-1');
         clipperOverlay.style.cssText = `
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       z-index: 2147483647; cursor: crosshair;
-      background: rgba(0,0,0,0.1);
+      background: rgba(0,0,0,0.1); outline: none;
     `;
 
         let startX, startY;
@@ -82,15 +83,45 @@
 
             if (w < 10 || h < 10) return; // Too small
 
-            // Capture elements within the selected region
-            const elementsInRegion = document.elementsFromPoint(x + w / 2, y + h / 2);
+            // Sample multiple points across the selection to find elements
+            const samplePoints = [
+                [x + w * 0.25, y + h * 0.25],
+                [x + w * 0.50, y + h * 0.25],
+                [x + w * 0.75, y + h * 0.25],
+                [x + w * 0.25, y + h * 0.50],
+                [x + w * 0.50, y + h * 0.50],
+                [x + w * 0.75, y + h * 0.50],
+                [x + w * 0.25, y + h * 0.75],
+                [x + w * 0.50, y + h * 0.75],
+                [x + w * 0.75, y + h * 0.75],
+            ];
+            const foundElements = new Set();
+            for (const [px, py] of samplePoints) {
+                const els = document.elementsFromPoint(px, py);
+                for (const el of els) {
+                    if (el !== clipperOverlay && el.id !== 'recall-clipper-overlay') {
+                        foundElements.add(el);
+                    }
+                }
+            }
+
+            // Find the best containing element (smallest with content)
             let capturedHtml = '';
             let capturedText = '';
-
-            // Try to find the best containing element
-            for (const el of elementsInRegion) {
+            const candidates = [...foundElements].filter(el => {
                 const rect = el.getBoundingClientRect();
-                if (rect.width > 0 && rect.height > 0) {
+                return rect.width > 0 && rect.height > 0;
+            });
+
+            // Sort by area (smallest first) and pick suitable container
+            candidates.sort((a, b) => {
+                const aRect = a.getBoundingClientRect();
+                const bRect = b.getBoundingClientRect();
+                return (aRect.width * aRect.height) - (bRect.width * bRect.height);
+            });
+
+            for (const el of candidates) {
+                if (el.innerHTML && el.innerHTML.length > 0) {
                     capturedHtml = el.outerHTML;
                     capturedText = el.innerText || el.textContent || '';
                     break;

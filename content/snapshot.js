@@ -81,6 +81,35 @@
   }
 
   /**
+   * Fetch an image via network and convert to base64 data URI
+   * Used as fallback when canvas conversion fails (cross-origin images)
+   */
+  async function fetchImageAsBase64(url) {
+    try {
+      const response = await fetch(url, {
+        mode: 'cors',
+        credentials: 'omit',
+        cache: 'force-cache',
+      });
+      if (!response.ok) return null;
+
+      const blob = await response.blob();
+      if (!blob.type.startsWith('image/')) return null;
+      // Skip very large images (> 5MB)
+      if (blob.size > 5 * 1024 * 1024) return null;
+
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Fetch and inline a CSS stylesheet
    */
   async function fetchCSS(href) {
@@ -201,9 +230,11 @@
       // StyleSheet access error
     }
 
-    // 3. Inline images as base64 (use progressive cache as fallback)
+    // 3. Inline images as base64 (use progressive cache as fallback, then fetch)
     const progressiveCache = window.__recallProgressiveCache || null;
     const images = docClone.querySelectorAll('img');
+    const imageInlinePromises = [];
+
     for (const clonedImg of images) {
       const src = clonedImg.getAttribute('src');
       if (!src || src.startsWith('data:')) continue;
@@ -230,9 +261,28 @@
 
       if (dataUrl) {
         clonedImg.setAttribute('src', dataUrl);
-        // Remove srcset to prevent browser loading other sources
         clonedImg.removeAttribute('srcset');
+      } else {
+        // Try 3: Fetch image via network (cross-origin fallback)
+        const imgRef = clonedImg;
+        const imgUrl = absoluteSrc;
+        imageInlinePromises.push(
+          fetchImageAsBase64(imgUrl).then((fetched) => {
+            if (fetched) {
+              imgRef.setAttribute('src', fetched);
+              imgRef.removeAttribute('srcset');
+            }
+          })
+        );
       }
+    }
+
+    // Wait for all fetch-based image conversions (with timeout)
+    if (imageInlinePromises.length > 0) {
+      await Promise.race([
+        Promise.allSettled(imageInlinePromises),
+        wait(10000), // 10 second timeout for image fetching
+      ]);
     }
 
     // Also inline lazy-load data-src attributes using progressive cache
@@ -302,12 +352,45 @@
 
     // 7. Inline background images in style attributes
     const styledElements = docClone.querySelectorAll('[style]');
+    const bgInlinePromises = [];
     for (const el of styledElements) {
       const style = el.getAttribute('style');
-      if (style && style.includes('url(') && !style.includes('data:')) {
-        // Keep as-is for now - complex to inline inline styles
-        // The base tag will handle relative URLs
+      if (!style || !style.includes('url(') || style.includes('data:')) continue;
+
+      // Extract url() value from inline style
+      const urlMatch = style.match(/url\(["']?(https?:\/\/[^"')]+)["']?\)/);
+      if (!urlMatch) continue;
+
+      const bgUrl = urlMatch[1];
+
+      // Try progressive cache first
+      let cachedBg = null;
+      if (progressiveCache) {
+        cachedBg = progressiveCache.lookupImage(bgUrl);
       }
+
+      if (cachedBg) {
+        el.setAttribute('style', style.replace(urlMatch[0], `url('${cachedBg}')`));
+      } else {
+        // Fetch as fallback
+        const elRef = el;
+        const matchRef = urlMatch;
+        const styleRef = style;
+        bgInlinePromises.push(
+          fetchImageAsBase64(bgUrl).then((fetched) => {
+            if (fetched) {
+              elRef.setAttribute('style', styleRef.replace(matchRef[0], `url('${fetched}')`));
+            }
+          })
+        );
+      }
+    }
+
+    if (bgInlinePromises.length > 0) {
+      await Promise.race([
+        Promise.allSettled(bgInlinePromises),
+        wait(5000),
+      ]);
     }
 
     // 8. Remove all <script> tags (security + size reduction)

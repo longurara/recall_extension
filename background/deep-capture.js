@@ -56,11 +56,11 @@ export async function deepCaptureTab(tabId, flowMeta = null) {
 
   try {
     // Set badge
-    chrome.action.setBadgeText({ text: 'DP', tabId }).catch(() => {});
+    chrome.action.setBadgeText({ text: 'DP', tabId }).catch(() => { });
     chrome.action.setBadgeBackgroundColor({
       color: BADGE_COLORS.CAPTURING,
       tabId,
-    }).catch(() => {});
+    }).catch(() => { });
 
     // Get tab info
     const tab = await chrome.tabs.get(tabId);
@@ -206,19 +206,19 @@ export async function deepCaptureTab(tabId, flowMeta = null) {
     }
 
     // 4. Take screenshot via CDP (higher quality)
-  let screenshotData = null;
-  let screenshotBlob = null;
-  try {
-    const result = await sendCommand(tabId, 'Page.captureScreenshot', {
-      format: 'jpeg',
-      quality: 80,
+    let screenshotData = null;
+    let screenshotBlob = null;
+    try {
+      const result = await sendCommand(tabId, 'Page.captureScreenshot', {
+        format: 'jpeg',
+        quality: 80,
         captureBeyondViewport: false,
-    });
-    screenshotData = result.data; // base64
-    screenshotBlob = base64ToBlob(screenshotData, 'image/jpeg');
-  } catch {
-    console.warn('[Recall] CDP screenshot failed');
-  }
+      });
+      screenshotData = result.data; // base64
+      screenshotBlob = base64ToBlob(screenshotData, 'image/jpeg');
+    } catch {
+      console.warn('[Recall] CDP screenshot failed');
+    }
 
     // Detach debugger
     await detachDebugger(tabId);
@@ -346,13 +346,13 @@ export async function deepCaptureTab(tabId, flowMeta = null) {
     ]);
 
     // Success badge
-    chrome.action.setBadgeText({ text: 'OK', tabId }).catch(() => {});
+    chrome.action.setBadgeText({ text: 'OK', tabId }).catch(() => { });
     chrome.action.setBadgeBackgroundColor({
       color: BADGE_COLORS.SUCCESS,
       tabId,
-    }).catch(() => {});
+    }).catch(() => { });
     setTimeout(() => {
-      chrome.action.setBadgeText({ text: '', tabId }).catch(() => {});
+      chrome.action.setBadgeText({ text: '', tabId }).catch(() => { });
     }, 3000);
 
     console.log(
@@ -366,7 +366,7 @@ export async function deepCaptureTab(tabId, flowMeta = null) {
     chrome.runtime.sendMessage({
       type: MSG.SNAPSHOT_SAVED,
       snapshot: metadata,
-    }).catch(() => {});
+    }).catch(() => { });
 
     return metadata;
   } catch (error) {
@@ -378,13 +378,13 @@ export async function deepCaptureTab(tabId, flowMeta = null) {
     }
 
     // Error badge
-    chrome.action.setBadgeText({ text: 'X', tabId }).catch(() => {});
+    chrome.action.setBadgeText({ text: 'X', tabId }).catch(() => { });
     chrome.action.setBadgeBackgroundColor({
       color: BADGE_COLORS.ERROR,
       tabId,
-    }).catch(() => {});
+    }).catch(() => { });
     setTimeout(() => {
-      chrome.action.setBadgeText({ text: '', tabId }).catch(() => {});
+      chrome.action.setBadgeText({ text: '', tabId }).catch(() => { });
     }, 3000);
 
     throw error;
@@ -416,9 +416,10 @@ function buildViewableHtml(resources, pageUrl, title) {
         `<link[^>]*href=["']${escapeRegExp(r.url)}["'][^>]*/?>`,
         'gi'
       );
-      if (linkPattern.test(html)) {
-        html = html.replace(linkPattern, styleTag);
-      }
+      // Replace directly — .replace() is safe on no-match (returns original)
+      // Do NOT use .test() before .replace() with /g flag — .test() advances
+      // lastIndex, causing .replace() to skip the first match.
+      html = html.replace(linkPattern, styleTag);
     }
   }
 

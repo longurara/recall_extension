@@ -11,11 +11,13 @@ async function blobToUint8(blob) {
 
 async function blobToDataUrl(blob) {
   const bytes = await blobToUint8(blob);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  // Use chunk-based approach to avoid O(n²) string concatenation
+  const chunkSize = 8192;
+  const chunks = [];
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize)));
   }
-  return `data:${blob.type || 'application/octet-stream'};base64,${btoa(binary)}`;
+  return `data:${blob.type || 'application/octet-stream'};base64,${btoa(chunks.join(''))}`;
 }
 
 function createObjectUrlSafe(blob) {
@@ -172,6 +174,11 @@ export async function importBackupZip(arrayBuffer, { wipeExisting = true } = {})
   if (!manifestEntry) throw new Error('Backup missing manifest.json');
   const manifest = JSON.parse(decoder.decode(manifestEntry.data));
 
+  // Validate schema version compatibility
+  if (manifest.schemaVersion && manifest.schemaVersion > 1) {
+    throw new Error(`Unsupported backup schema version: ${manifest.schemaVersion}. This extension supports version 1.`);
+  }
+
   const settingsEntry = entries.find((e) => e.name === 'settings.json');
   const watchedEntry = entries.find((e) => e.name === 'watched-pages.json');
 
@@ -196,10 +203,39 @@ export async function importBackupZip(arrayBuffer, { wipeExisting = true } = {})
 
   // Snapshots
   let imported = 0;
+  let skipped = 0;
   for (const entry of entries) {
     if (!entry.name.endsWith('/meta.json') || !entry.name.startsWith('snapshots/')) continue;
     const base = entry.name.replace(/meta\.json$/, '');
-    const snap = JSON.parse(decoder.decode(entry.data));
+
+    let snap;
+    try {
+      snap = JSON.parse(decoder.decode(entry.data));
+    } catch (e) {
+      console.warn(`[Recall] Skipping corrupted snapshot entry: ${entry.name}`, e);
+      skipped++;
+      continue;
+    }
+
+    // Validate required fields
+    if (!snap.id || !snap.url) {
+      console.warn(`[Recall] Skipping snapshot with missing required fields (id/url): ${entry.name}`);
+      skipped++;
+      continue;
+    }
+
+    // Check for duplicate IDs when not wiping
+    if (!wipeExisting) {
+      try {
+        const existing = await db.getSnapshot(snap.id);
+        if (existing) {
+          console.warn(`[Recall] Skipping duplicate snapshot ID: ${snap.id}`);
+          skipped++;
+          continue;
+        }
+      } catch { /* proceed */ }
+    }
+
     const dom = entries.find((e) => e.name === `${base}domSnapshot.gz`);
     const deep = entries.find((e) => e.name === `${base}deepBundle.gz`);
     const text = entries.find((e) => e.name === `${base}textContent.txt`);
@@ -219,14 +255,20 @@ export async function importBackupZip(arrayBuffer, { wipeExisting = true } = {})
       (snapshotData.screenshotBlob?.size || 0);
     snap.snapshotSize = sizeTotal || snap.snapshotSize || 0;
 
-    await db.saveSnapshot(snap);
-    await db.saveSnapshotData(snapshotData);
-    imported += 1;
+    try {
+      await db.saveSnapshot(snap);
+      await db.saveSnapshotData(snapshotData);
+      imported += 1;
+    } catch (e) {
+      console.warn(`[Recall] Failed to import snapshot ${snap.id}:`, e);
+      skipped++;
+    }
   }
 
   return {
     manifest,
     imported,
+    skipped,
     watchedImported: watchedPages.length,
   };
 }
