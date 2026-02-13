@@ -567,11 +567,13 @@ chrome.commands.onCommand.addListener(async (command) => {
 async function blobToDataUrl(blob) {
   const buffer = await blob.arrayBuffer();
   const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  // Use chunk-based approach to avoid O(n²) string concatenation
+  const chunkSize = 8192;
+  const chunks = [];
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize)));
   }
-  return `data:${blob.type || 'image/jpeg'};base64,${btoa(binary)}`;
+  return `data:${blob.type || 'image/jpeg'};base64,${btoa(chunks.join(''))}`;
 }
 
 /**
@@ -757,10 +759,8 @@ async function handleMessage(message, sender) {
     }
 
     case MSG.DELETE_SNAPSHOTS: {
-      // Soft delete all
-      for (const id of message.ids) {
-        await db.updateSnapshot(id, { isDeleted: true, deletedAt: Date.now() });
-      }
+      // Soft delete all in a single transaction
+      await db.updateSnapshots(message.ids, { isDeleted: true, deletedAt: Date.now() });
       chrome.runtime.sendMessage({
         type: MSG.SNAPSHOT_DELETED,
         ids: message.ids,
@@ -788,9 +788,7 @@ async function handleMessage(message, sender) {
 
     case MSG.RESTORE_SNAPSHOT: {
       if (message.ids) {
-        for (const id of message.ids) {
-          await db.updateSnapshot(id, { isDeleted: false, deletedAt: null });
-        }
+        await db.updateSnapshots(message.ids, { isDeleted: false, deletedAt: null });
         return { restored: message.ids };
       }
       await db.updateSnapshot(message.id, { isDeleted: false, deletedAt: null });
@@ -1185,15 +1183,12 @@ async function handleMessage(message, sender) {
     }
 
     case MSG.SAVE_AUTO_TAG_RULES: {
-      // Save all rules (replace all)
-      const existingRules = await db.getAllAutoTagRules();
-      for (const r of existingRules) {
-        await db.deleteAutoTagRule(r.id);
-      }
-      for (const rule of message.rules) {
+      // Save all rules (replace all) in a single transaction
+      const rules = message.rules.map(rule => {
         if (!rule.id) rule.id = generateId();
-        await db.saveAutoTagRule(rule);
-      }
+        return rule;
+      });
+      await db.replaceAllAutoTagRules(rules);
       return { saved: true };
     }
 

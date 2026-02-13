@@ -282,14 +282,15 @@ export async function deepCaptureTab(tabId, flowMeta = null) {
 
         ctx.drawImage(bitmap, 0, 0, Math.round(w), Math.round(h));
         const thumbBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.6 });
-        // Convert blob to data URL string
+        // Convert blob to data URL string using chunk-based approach
         const buffer = await thumbBlob.arrayBuffer();
         const bytes = new Uint8Array(buffer);
-        let binary = '';
-        for (let i = 0; i < bytes.length; i++) {
-          binary += String.fromCharCode(bytes[i]);
+        const chunkSize = 8192;
+        const chunks = [];
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize)));
         }
-        thumbnailDataUrl = `data:image/jpeg;base64,${btoa(binary)}`;
+        thumbnailDataUrl = `data:image/jpeg;base64,${btoa(chunks.join(''))}`;
       } catch {
         // Thumbnail creation failed
       }
