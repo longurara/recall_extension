@@ -1184,10 +1184,9 @@ async function handleMessage(message, sender) {
 
     case MSG.SAVE_AUTO_TAG_RULES: {
       // Save all rules (replace all) in a single transaction
-      const rules = message.rules.map(rule => {
-        if (!rule.id) rule.id = generateId();
-        return rule;
-      });
+      const rules = message.rules.map(rule =>
+        rule.id ? rule : { ...rule, id: generateId() }
+      );
       await db.replaceAllAutoTagRules(rules);
       return { saved: true };
     }
