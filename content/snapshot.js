@@ -317,7 +317,7 @@
     if (imagesToFetch.length > 0) {
       await Promise.race([
         processBatchedImageFetch(imagesToFetch, 6),
-        wait(8000), // Reduced timeout: 8 seconds for batched fetching
+        wait(8000), // Reduced from 10s: batched parallel processing is faster than sequential
       ]);
     }
 
@@ -435,7 +435,7 @@
             );
           }
         })(),
-        wait(4000), // Reduced timeout for background images: 4 seconds
+        wait(4000), // Reduced from 5s: background images are lower priority and batched
       ]);
     }
 
