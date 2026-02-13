@@ -8,6 +8,19 @@ import * as db from '../lib/db.js';
 import { generateId, getDomain } from '../lib/utils.js';
 import { MSG } from '../lib/constants.js';
 
+function isPrivateHost(hostname = '') {
+  const host = hostname.toLowerCase();
+  return (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '::1' ||
+    host.startsWith('127.') ||
+    host.startsWith('10.') ||
+    host.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)
+  );
+}
+
 // ============================================================
 // TEXT HASHING (simple FNV-1a for fast comparison)
 // ============================================================
@@ -97,6 +110,14 @@ function extractTextForSelector(html, selector) {
  */
 async function fetchPage(url) {
   try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { ok: false, error: 'Only http/https URLs are supported' };
+    }
+    if (isPrivateHost(parsed.hostname)) {
+      return { ok: false, error: 'Blocked private/localhost address' };
+    }
+
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; RecallBot/1.0)',

@@ -232,6 +232,7 @@
             </div>
             <div class="api-key-row">
               <input type="password" id="aiApiKey" class="input-text" placeholder="sk-...">
+              <button id="btn-clear-ai-key" class="btn btn-secondary-sm" type="button">Clear</button>
             </div>
           </div>
           <div id="ai-model-row" class="setting-row hidden">
@@ -252,6 +253,25 @@
             </div>
             <input type="text" id="aiApiEndpoint" class="input-text"
               placeholder="https://api.example.com/v1/chat/completions">
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label for="aiRequireConfirm">Confirm before sending content</label>
+              <p>Show a confirmation dialog before sending snapshot text to external AI providers.</p>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="aiRequireConfirm">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label for="aiBlockedDomains">AI blocklist</label>
+              <p>Snapshots from these domains will never be sent to AI. One item per line; supports prefixes like 127. or .bank.</p>
+            </div>
+            <textarea id="aiBlockedDomains" class="input-text" rows="4" placeholder="localhost
+127.
+.bank"></textarea>
           </div>
         </div>
       </section>

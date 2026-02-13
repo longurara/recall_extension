@@ -154,6 +154,9 @@ const annotationsList = document.getElementById('annotations-list');
 const annotationsEmpty = document.getElementById('annotations-empty');
 const annotationToolbar = document.getElementById('annotation-toolbar');
 
+let viewerSettings = null;
+let aiConsentGranted = false;
+
 let currentSnapshot = null;
 let flowSiblings = []; // ordered list of snapshot IDs in this flow
 let flowIndex = -1;    // current position within flowSiblings
@@ -161,6 +164,61 @@ let notesSaveTimeout = null;
 let highlightQuery = ''; // search query from spotlight for highlighting
 let annotations = [];    // saved annotations for this snapshot
 let pendingSelection = null; // selection data waiting for color pick
+
+async function getViewerSettings() {
+  if (viewerSettings) return viewerSettings;
+  try {
+    const resp = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: MSG.GET_SETTINGS }, (response) => {
+        if (response?.success) resolve(response.data);
+        else reject(new Error(response?.error || 'Failed to load settings'));
+      });
+    });
+    viewerSettings = resp || {};
+  } catch {
+    viewerSettings = {};
+  }
+  return viewerSettings;
+}
+
+function isBlockedForAI(hostname, blocklist = []) {
+  if (!hostname) return false;
+  const host = hostname.toLowerCase();
+  return blocklist.some((entry) => {
+    if (!entry) return false;
+    const e = entry.toLowerCase();
+    if (e.startsWith('.')) return host.endsWith(e);
+    if (e.endsWith('.')) return host.startsWith(e);
+    return host.includes(e);
+  });
+}
+
+async function ensureAiAllowedForSnapshot(snapshot) {
+  if (!snapshot?.url) return { ok: false, error: 'Không có URL snapshot' };
+  const settings = await getViewerSettings();
+  const blocklist = settings.aiBlockedDomains || [];
+  let hostname = '';
+  try {
+    hostname = new URL(snapshot.url).hostname;
+  } catch {
+    hostname = snapshot.domain || '';
+  }
+
+  if (isBlockedForAI(hostname, blocklist)) {
+    return { ok: false, error: 'Tên miền này nằm trong danh sách chặn AI' };
+  }
+
+  if (settings.aiRequireConfirm !== false && !aiConsentGranted) {
+    const confirmed = await showConfirm(
+      'Bạn có chắc muốn gửi nội dung snapshot tới dịch vụ AI bên ngoài?',
+      { title: 'Gửi tới AI', confirmText: 'Đồng ý', cancelText: 'Hủy' }
+    );
+    if (!confirmed) return { ok: false, error: 'Đã hủy theo yêu cầu' };
+    aiConsentGranted = true;
+  }
+
+  return { ok: true, settings };
+}
 
 // ============================================================
 // Init
@@ -185,6 +243,7 @@ async function init() {
     }
 
     currentSnapshot = metadata;
+    aiConsentGranted = false;
 
     // Update info bar
     renderInfoBar(metadata);
@@ -369,12 +428,67 @@ function sanitizeHtml(html) {
       }
     }
 
-    // Remove javascript: URLs from href/src/action attributes
+    // Remove meta refresh
+    doc.querySelectorAll('meta[http-equiv="refresh" i]').forEach((m) => m.remove());
+
+    // Strip or neutralize network-fetching attributes to prevent callback/beacon
+    const disallowedProtocols = ['http:', 'https:'];
+    const safeHref = (value) => {
+      if (!value) return '#';
+      try {
+        const url = new URL(value, 'https://example.com');
+        if (disallowedProtocols.includes(url.protocol)) return '#';
+        if (url.protocol === 'javascript:') return '#';
+        return value;
+      } catch {
+        return '#';
+      }
+    };
+
+    // Links: neutralize external navigation
+    for (const el of doc.querySelectorAll('a[href]')) {
+      const href = el.getAttribute('href');
+      el.setAttribute('href', safeHref(href));
+      el.setAttribute('target', '_blank');
+      el.setAttribute('rel', 'noopener noreferrer');
+    }
+
+    // Images and media: allow only data/blob; otherwise drop src
+    for (const el of doc.querySelectorAll('[src], [srcset]')) {
+      const src = el.getAttribute('src');
+      if (src && !src.startsWith('data:') && !src.startsWith('blob:')) {
+        el.removeAttribute('src');
+      }
+      const srcset = el.getAttribute('srcset');
+      if (srcset) el.removeAttribute('srcset');
+    }
+
+    // Forms/actions: disable outbound posts
+    for (const el of doc.querySelectorAll('[action]')) {
+      el.setAttribute('action', '#');
+    }
+
+    // Iframes: remove to avoid nested loads
+    doc.querySelectorAll('iframe, frame, embed, object').forEach((n) => n.remove());
+
+    // Stylesheets/links to external: remove
+    doc.querySelectorAll('link[rel="stylesheet"], link[rel="preload"], link[rel="prefetch"], link[rel="preconnect"]').forEach((n) => n.remove());
+
+    // Remove existing <base> to avoid URL rewriting
+    doc.querySelectorAll('base').forEach((b) => b.remove());
+
+    // Remove javascript: URLs from any remaining attributes
     for (const el of doc.querySelectorAll('[href^="javascript:" i], [src^="javascript:" i], [action^="javascript:" i]')) {
       if (el.hasAttribute('href')) el.setAttribute('href', '#');
       if (el.hasAttribute('src')) el.removeAttribute('src');
       if (el.hasAttribute('action')) el.removeAttribute('action');
     }
+
+    // Inject strict CSP to block network fetches inside the iframe document
+    const cspMeta = doc.createElement('meta');
+    cspMeta.httpEquiv = 'Content-Security-Policy';
+    cspMeta.content = "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline' data:; font-src data:; media-src data:; connect-src 'none'; frame-src 'none'";
+    doc.head.prepend(cspMeta);
 
     // Reconstruct the full HTML including doctype
     return '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
@@ -388,7 +502,7 @@ function sanitizeHtml(html) {
 }
 
 function renderSnapshot(html, scrollPosition = 0) {
-  // Sanitize HTML to remove scripts before rendering in sandboxed iframe
+  // Sanitize HTML to remove scripts and external fetches before rendering in sandboxed iframe
   const sanitizedHtml = sanitizeHtml(html);
   snapshotFrame.srcdoc = sanitizedHtml;
 
@@ -1197,10 +1311,18 @@ if (btnGenerateSummary) {
     summaryContent.innerHTML = '<p class="summary-placeholder">' + t('viewer-generating') + '</p>';
 
     try {
+      const allowed = await ensureAiAllowedForSnapshot(currentSnapshot);
+      if (!allowed.ok) {
+        summaryContent.innerHTML = `<p class="summary-error">${allowed.error}</p>`;
+        summaryStatus.textContent = 'Blocked';
+        return;
+      }
+
       const resp = await new Promise((resolve, reject) => {
         chrome.runtime.sendMessage({
           type: MSG.GENERATE_SUMMARY,
           id: currentSnapshot.id,
+          confirmed: true,
         }, (response) => {
           if (response?.success) resolve(response.data);
           else reject(new Error(response?.error || 'Generation failed'));

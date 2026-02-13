@@ -21,6 +21,8 @@
   let isAiMode = false;
   let aiChatHistory = [];
   let isAiLoading = false;
+  let aiSettingsCache = null;
+  let aiConsentGranted = false;
 
   // i18n
   let currentLang = 'en';
@@ -503,6 +505,55 @@
     });
   }
 
+  async function getAiSettings() {
+    if (aiSettingsCache) return aiSettingsCache;
+    try {
+      const resp = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+      if (resp?.success) {
+        aiSettingsCache = resp.data || {};
+        return aiSettingsCache;
+      }
+    } catch { /* ignore */ }
+    aiSettingsCache = {};
+    return aiSettingsCache;
+  }
+
+  function isBlockedForAI(hostname, blocklist = []) {
+    if (!hostname) return false;
+    const host = hostname.toLowerCase();
+    return blocklist.some((entry) => {
+      if (!entry) return false;
+      const e = entry.toLowerCase();
+      if (e.startsWith('.')) return host.endsWith(e);
+      if (e.endsWith('.')) return host.startsWith(e);
+      return host.includes(e);
+    });
+  }
+
+  async function ensureAiAllowedForPage(url) {
+    const settings = await getAiSettings();
+    const blocklist = settings.aiBlockedDomains || [];
+    let hostname = '';
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        throw new Error('Chỉ hỗ trợ trang http/https khi gửi tới AI.');
+      }
+      hostname = parsed.hostname;
+    } catch (e) { hostname = ''; if (e?.message) throw e; }
+
+    if (isBlockedForAI(hostname, blocklist)) {
+      throw new Error('Tên miền này đang bị chặn gửi đến AI.');
+    }
+
+    if (settings.aiRequireConfirm !== false && !aiConsentGranted) {
+      const ok = window.confirm('Gửi nội dung trang này tới dịch vụ AI bên ngoài?');
+      if (!ok) throw new Error('Đã hủy theo yêu cầu người dùng.');
+      aiConsentGranted = true;
+    }
+    return settings;
+  }
+
   async function sendAiMessage(question) {
     if (isAiLoading || !question.trim()) return;
     isAiLoading = true;
@@ -528,6 +579,8 @@
         pageText = (document.body.innerText || '').substring(0, 8000);
       } catch { /* cross-origin or restricted */ }
 
+      await ensureAiAllowedForPage(pageUrl);
+
       const response = await chrome.runtime.sendMessage({
         type: 'SPOTLIGHT_AI_CHAT',
         question,
@@ -535,6 +588,7 @@
         pageUrl,
         pageTitle,
         chatHistory: aiChatHistory.slice(0, -1), // exclude current question (already added)
+        confirmed: true,
       });
 
       // Remove loading indicator

@@ -9,6 +9,68 @@ import { deepCaptureTab } from './deep-capture.js';
 import { watchPage, unwatchPage, checkAllDuePages, checkWatchedPage } from './watcher.js';
 import { exportBackupZip, importBackupZip } from './backup-exporter.js';
 
+const EXTENSION_ORIGIN = chrome.runtime.getURL('');
+
+function isTrustedSender(sender) {
+  const url = sender?.url || '';
+  return url.startsWith(EXTENSION_ORIGIN);
+}
+
+function ensureTrustedSender(sender, feature) {
+  if (!isTrustedSender(sender)) {
+    throw new Error(`${feature} chỉ được gọi từ trang giao diện của Recall.`);
+  }
+}
+
+function isPrivateHost(hostname = '') {
+  const host = hostname.toLowerCase();
+  return (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '::1' ||
+    host.startsWith('127.') ||
+    host.startsWith('10.') ||
+    host.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)
+  );
+}
+
+function isPublicHttpUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+    return !isPrivateHost(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isBlockedDomainForAI(domainOrUrl, blocklist = []) {
+  if (!domainOrUrl) return false;
+  let host = domainOrUrl;
+  try {
+    host = new URL(domainOrUrl).hostname || domainOrUrl;
+  } catch { /* keep as-is */ }
+  const lowerHost = host.toLowerCase();
+  return blocklist.some((entry) => {
+    if (!entry) return false;
+    const e = entry.toLowerCase();
+    if (e.startsWith('.')) return lowerHost.endsWith(e);
+    if (e.endsWith('.')) return lowerHost.startsWith(e);
+    return lowerHost.includes(e);
+  });
+}
+
+function enforceAiPolicy({ domain, url, settings, confirmed }) {
+  const blocklist = settings?.aiBlockedDomains || DEFAULT_SETTINGS.aiBlockedDomains;
+  if (isBlockedDomainForAI(domain || url, blocklist)) {
+    throw new Error('Domain này đang bị chặn, không gửi nội dung tới AI.');
+  }
+  if (settings?.aiRequireConfirm !== false && !confirmed) {
+    throw new Error('Cần xác nhận trước khi gửi nội dung tới AI.');
+  }
+}
+
 // ============================================================
 // NAVIGATION FLOW TRACKING (in-memory per-tab session map)
 // ============================================================
@@ -564,7 +626,7 @@ async function handleClosingTabCapture(data) {
   }
 
   // Check size limit
-  const maxSize = (settings.maxSnapshotSizeMB || 10) * 1024 * 1024;
+  const maxSize = (settings.maxSnapshotSizeMB ?? 10) * 1024 * 1024;
   if (data.htmlSize > maxSize) {
     console.warn('[Recall] Closing-tab page too large, skipping:', data.url);
     return;
@@ -640,6 +702,14 @@ async function handleMessage(message, sender) {
     }
 
     case MSG.CAPTURE_DEEP: {
+      ensureTrustedSender(sender, 'Deep Capture');
+      if (!sender?.hasUserGesture && !message.userGesture) {
+        throw new Error('Deep Capture cần thao tác người dùng.');
+      }
+      const quota = await storageManager.checkAndCleanup();
+      if (!quota.ok) {
+        throw new Error(quota.message || 'Storage is full, không thể Deep Capture.');
+      }
       const tabId = message.tabId;
       if (!tabId) {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -984,6 +1054,10 @@ async function handleMessage(message, sender) {
 
     // ---------- Page Watch ----------
     case MSG.WATCH_PAGE: {
+      ensureTrustedSender(sender, 'Watch Page');
+      if (!isPublicHttpUrl(message.url)) {
+        throw new Error('Chỉ hỗ trợ URL http/https công khai khi theo dõi thay đổi.');
+      }
       const entry = await watchPage({
         url: message.url,
         title: message.title,
@@ -1014,6 +1088,7 @@ async function handleMessage(message, sender) {
     }
 
     case MSG.CHECK_WATCHED_NOW: {
+      ensureTrustedSender(sender, 'Watch Page');
       // Force check a single page immediately
       if (message.id) {
         const entry = await db.getWatchedPage(message.id);
@@ -1173,6 +1248,7 @@ async function handleMessage(message, sender) {
 
     // ---------- AI Summary ----------
     case MSG.GENERATE_SUMMARY: {
+      ensureTrustedSender(sender, 'AI Summary');
       const settings = await db.getAllSettings();
       if (settings.aiProvider === 'none') {
         throw new Error('No AI provider configured. Go to Settings to set up an AI provider.');
@@ -1180,6 +1256,9 @@ async function handleMessage(message, sender) {
 
       const snap = await db.getSnapshotData(message.id);
       if (!snap || !snap.textContent) throw new Error('No text content for this snapshot');
+
+      const snapMeta = await db.getSnapshot(message.id);
+      enforceAiPolicy({ domain: snapMeta?.domain, url: snapMeta?.url, settings, confirmed: message.confirmed });
 
       const text = snap.textContent.substring(0, 10000); // Limit to 10K chars
       let summary = '';
@@ -1249,6 +1328,7 @@ async function handleMessage(message, sender) {
     }
 
     case MSG.FETCH_AI_MODELS: {
+      ensureTrustedSender(sender, 'Fetch AI models');
       const { provider, apiKey } = message;
       if (!apiKey) throw new Error('API key is required');
 
@@ -1306,6 +1386,12 @@ async function handleMessage(message, sender) {
       if (!settings.aiApiKey) {
         throw new Error('API key not configured. Go to Settings → AI Summary.');
       }
+
+      if (!isPublicHttpUrl(pageUrl)) {
+        throw new Error('Trang hiện tại không phải http/https công khai nên không gửi tới AI.');
+      }
+
+      enforceAiPolicy({ domain: getDomain(pageUrl), url: pageUrl, settings, confirmed: message.confirmed });
 
       // 1. Search related snapshots using keywords from the question
       const keywords = question.toLowerCase()

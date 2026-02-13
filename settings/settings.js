@@ -44,6 +44,8 @@ const fields = {
   thumbnailQuality: document.getElementById('thumbnailQuality'),
   saveOriginalScreenshots: document.getElementById('saveOriginalScreenshots'),
   language: document.getElementById('language'),
+  aiRequireConfirm: document.getElementById('aiRequireConfirm'),
+  aiBlockedDomains: document.getElementById('aiBlockedDomains'),
 };
 
 const saveBar = document.getElementById('save-bar');
@@ -229,6 +231,8 @@ function populateFields(s) {
   if (aiProviderEl) aiProviderEl.value = s.aiProvider || 'none';
   if (aiApiKeyEl) aiApiKeyEl.value = s.aiApiKey || '';
   if (aiApiEndpointEl) aiApiEndpointEl.value = s.aiApiEndpoint || '';
+  if (fields.aiRequireConfirm) fields.aiRequireConfirm.checked = s.aiRequireConfirm !== false;
+  if (fields.aiBlockedDomains) fields.aiBlockedDomains.value = (s.aiBlockedDomains || []).join('\n');
 
   const aiModelEl = document.getElementById('aiModel');
   if (aiModelEl && s.aiModel) {
@@ -289,24 +293,19 @@ function collectValues() {
     aiModel: document.getElementById('aiModel')?.value || '',
     readLaterReminderDays: parseInt(document.getElementById('readLaterReminderDays')?.value, 10) || 0,
     storageWarningEnabled: document.getElementById('storageWarningEnabled')?.checked !== false,
+    aiRequireConfirm: fields.aiRequireConfirm?.checked !== false,
+    aiBlockedDomains: fields.aiBlockedDomains?.value
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean) || [],
   };
 }
 
 function checkChanges() {
   currentSettings = collectValues();
   hasChanges = JSON.stringify(currentSettings) !== JSON.stringify({
-    autoCapture: originalSettings.autoCapture,
-    captureDelay: originalSettings.captureDelay,
-    duplicateWindowMinutes: originalSettings.duplicateWindowMinutes,
-    maxSnapshotSizeMB: originalSettings.maxSnapshotSizeMB,
-    maxStorageMB: originalSettings.maxStorageMB,
-    autoCleanupEnabled: originalSettings.autoCleanupEnabled,
-    autoCleanupThreshold: originalSettings.autoCleanupThreshold,
+    ...originalSettings,
     autoCleanupDays: originalSettings.autoCleanupDays || 0,
-    excludeDomains: originalSettings.excludeDomains,
-    thumbnailQuality: originalSettings.thumbnailQuality,
-    saveOriginalScreenshots: originalSettings.saveOriginalScreenshots,
-    language: originalSettings.language,
   });
 
   saveBar.classList.toggle('hidden', !hasChanges);
@@ -340,6 +339,17 @@ function discardChanges() {
 for (const field of Object.values(fields)) {
   field.addEventListener('input', checkChanges);
   field.addEventListener('change', checkChanges);
+}
+
+const btnClearAiKey = document.getElementById('btn-clear-ai-key');
+if (btnClearAiKey) {
+  btnClearAiKey.addEventListener('click', () => {
+    const aiKeyEl = document.getElementById('aiApiKey');
+    if (aiKeyEl) {
+      aiKeyEl.value = '';
+      checkChanges();
+    }
+  });
 }
 
 fields.language.addEventListener('change', () => {
