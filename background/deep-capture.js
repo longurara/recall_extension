@@ -5,6 +5,48 @@ import { generateId, getDomain, compressString } from '../lib/utils.js';
 import { CAPTURE_DEEP, BADGE_COLORS, MSG } from '../lib/constants.js';
 
 /**
+ * Check if a resource should be captured based on size and type
+ * Skip low-value resources to reduce capture size
+ */
+function shouldCaptureResource(resource, content) {
+  // Always capture documents and stylesheets
+  if (resource.type === 'Document' || resource.type === 'Stylesheet') {
+    return true;
+  }
+
+  // Always capture images
+  if (resource.type === 'Image') {
+    return true;
+  }
+
+  // For scripts, filter out large minified files (low value for viewing)
+  if (resource.type === 'Script') {
+    if (!content) return false;
+    
+    const contentStr = content.substring(0, 1000);
+    const isMinified = contentStr.includes('/*! ') || 
+                       (contentStr.length > 500 && contentStr.split('\n').length < 10);
+    
+    // Skip large minified scripts (>100KB)
+    if (isMinified && content.length > 100 * 1024) {
+      return false;
+    }
+  }
+
+  // Skip fonts, media, and other large binary resources
+  if (resource.type === 'Font' || resource.type === 'Media') {
+    return false;
+  }
+
+  // Skip very large resources (>5MB) regardless of type
+  if (content && content.length > 5 * 1024 * 1024) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * Send a CDP command via chrome.debugger
  */
 function sendCommand(tabId, method, params = {}) {
@@ -78,6 +120,7 @@ export async function deepCaptureTab(tabId, flowMeta = null) {
     // 1. Get resource tree (all loaded resources)
     const { frameTree } = await sendCommand(tabId, 'Page.getResourceTree');
     const resources = [];
+    const seenUrls = new Set(); // Track URLs to avoid duplicates
 
     // Collect all resources from all frames
     async function collectResources(tree) {
@@ -124,6 +167,12 @@ export async function deepCaptureTab(tabId, flowMeta = null) {
           // (already fetched above)
           if (resource.url === frame.url) continue;
 
+          // Skip duplicate resources (same URL already captured)
+          if (seenUrls.has(resource.url)) {
+            console.log(`[Recall] Skipping duplicate resource: ${resource.url.substring(0, 100)}`);
+            continue;
+          }
+
           try {
             const { content, base64Encoded } = await sendCommand(
               tabId,
@@ -131,6 +180,13 @@ export async function deepCaptureTab(tabId, flowMeta = null) {
               { frameId: frame.id, url: resource.url }
             );
 
+            // Apply resource filtering to reduce capture size
+            if (!shouldCaptureResource(resource, content)) {
+              console.log(`[Recall] Skipping low-value resource: ${resource.type} (${(content?.length / 1024).toFixed(1)}KB) ${resource.url.substring(0, 100)}`);
+              continue;
+            }
+
+            seenUrls.add(resource.url); // Mark as captured
             resources.push({
               url: resource.url,
               type: resource.type,

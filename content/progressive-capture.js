@@ -17,7 +17,8 @@
     let totalCacheBytes = 0;
     const MAX_CACHE_BYTES = 30 * 1024 * 1024; // 30MB limit
     const MAX_IMAGE_DIMENSION = 4096;          // skip huge images (e.g. maps)
-    let stats = { imagesObserved: 0, imagesCached: 0, mutationsCount: 0 };
+    const MIN_IMAGE_SIZE = 50;                 // skip tiny images (icons, spacers)
+    let stats = { imagesObserved: 0, imagesCached: 0, mutationsCount: 0, imagesSkipped: 0 };
 
     /**
      * Convert an image element to base64 via canvas
@@ -26,6 +27,9 @@
         try {
             if (!img.naturalWidth || !img.naturalHeight) return null;
             if (img.naturalWidth > MAX_IMAGE_DIMENSION || img.naturalHeight > MAX_IMAGE_DIMENSION) return null;
+            
+            // Skip tiny images (tracking pixels, spacers, small icons)
+            if (img.naturalWidth < MIN_IMAGE_SIZE && img.naturalHeight < MIN_IMAGE_SIZE) return null;
 
             const canvas = document.createElement('canvas');
             canvas.width = img.naturalWidth;
@@ -93,6 +97,13 @@
         if (imageCache.has(src) || pendingImages.has(src)) return;
 
         stats.imagesObserved++;
+
+        // Skip tiny images (tracking pixels, 1x1 images, etc.)
+        if (img.width > 0 && img.height > 0 && 
+            img.width < MIN_IMAGE_SIZE && img.height < MIN_IMAGE_SIZE) {
+            stats.imagesSkipped++;
+            return;
+        }
 
         // If image is already loaded, convert immediately
         if (img.complete && img.naturalWidth > 0) {
@@ -322,7 +333,7 @@
         clearCache: () => {
             imageCache.clear();
             totalCacheBytes = 0;
-            stats = { imagesObserved: 0, imagesCached: 0, mutationsCount: 0 };
+            stats = { imagesObserved: 0, imagesCached: 0, mutationsCount: 0, imagesSkipped: 0 };
         },
         lookupImage: (src) => imageCache.get(src) || null,
     };

@@ -10,7 +10,7 @@
 
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  async function waitForPageIdle(maxWaitMs = 20000, idleMs = 1200) {
+  async function waitForPageIdle(maxWaitMs = 15000, idleMs = 600) {
     // Wait for load event if not complete
     if (document.readyState !== 'complete') {
       await new Promise((resolve) => {
@@ -33,8 +33,14 @@
       perfObserver.observe({ type: 'resource', buffered: true });
     } catch { /* unsupported */ }
 
-    // Wait for pending images
-    const pendingImages = Array.from(document.images).filter((img) => !img.complete);
+    // Wait for pending images (only critical above-fold images)
+    const pendingImages = Array.from(document.images).filter((img) => {
+      if (img.complete) return false;
+      // Check if image is in viewport or near it
+      const rect = img.getBoundingClientRect();
+      return rect.top < window.innerHeight + 500; // 500px buffer
+    });
+    
     if (pendingImages.length > 0) {
       await Promise.race([
         Promise.allSettled(pendingImages.map((img) => new Promise((resolve) => {
@@ -46,7 +52,7 @@
       ]);
     }
 
-    // Wait for network/resource idle
+    // Wait for network/resource idle (reduced threshold)
     while ((Date.now() - lastBusy) < idleMs && (Date.now() - start) < maxWaitMs) {
       await wait(200);
     }
@@ -110,6 +116,37 @@
   }
 
   /**
+   * Process image fetching in parallel batches to avoid overwhelming network
+   * @param {Array} tasks - Array of {url, element} objects
+   * @param {number} batchSize - Max concurrent requests
+   */
+  async function processBatchedImageFetch(tasks, batchSize = 6) {
+    const results = [];
+    
+    for (let i = 0; i < tasks.length; i += batchSize) {
+      const batch = tasks.slice(i, i + batchSize);
+      const batchResults = await Promise.allSettled(
+        batch.map(async ({ url, element }) => {
+          const dataUrl = await fetchImageAsBase64(url);
+          return { url, element, dataUrl };
+        })
+      );
+      
+      // Apply successful results immediately
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled' && result.value.dataUrl) {
+          result.value.element.setAttribute('src', result.value.dataUrl);
+          result.value.element.removeAttribute('srcset');
+        }
+      }
+      
+      results.push(...batchResults);
+    }
+    
+    return results;
+  }
+
+  /**
    * Fetch and inline a CSS stylesheet
    */
   async function fetchCSS(href) {
@@ -117,6 +154,13 @@
       const response = await fetch(href, { mode: 'cors', credentials: 'same-origin' });
       if (!response.ok) return null;
       let css = await response.text();
+
+      // Basic CSS minification (remove comments and excess whitespace)
+      css = css
+        .replace(/\/\*[\s\S]*?\*\//g, '') // Remove comments
+        .replace(/\s+/g, ' ') // Collapse whitespace
+        .replace(/\s*([{}:;,])\s*/g, '$1') // Remove spaces around special chars
+        .trim();
 
       // Resolve relative URLs in CSS (url() references)
       const baseUrl = new URL(href);
@@ -186,17 +230,21 @@
     // Clone the entire document
     const docClone = document.documentElement.cloneNode(true);
 
-    // 1. Inline all <link rel="stylesheet"> as <style> tags
+    // 1. Inline all <link rel="stylesheet"> as <style> tags (parallel with limit)
     const links = docClone.querySelectorAll('link[rel="stylesheet"]');
-    const cssPromises = [];
-
-    for (const link of links) {
-      const href = link.href || link.getAttribute('href');
-      if (!href) continue;
-
-      const absoluteHref = new URL(href, document.baseURI).href;
-      cssPromises.push(
-        fetchCSS(absoluteHref).then((css) => {
+    
+    // Process CSS in batches of 4 to avoid overwhelming the network
+    const cssBatchSize = 4;
+    for (let i = 0; i < links.length; i += cssBatchSize) {
+      const batch = Array.from(links).slice(i, i + cssBatchSize);
+      await Promise.allSettled(
+        batch.map(async (link) => {
+          const href = link.href || link.getAttribute('href');
+          if (!href) return;
+          
+          const absoluteHref = new URL(href, document.baseURI).href;
+          const css = await fetchCSS(absoluteHref);
+          
           if (css) {
             const style = document.createElement('style');
             style.setAttribute('data-recall-inlined', absoluteHref);
@@ -206,9 +254,6 @@
         })
       );
     }
-
-    // Wait for all CSS to be fetched
-    await Promise.allSettled(cssPromises);
 
     // 2. Inline <style> computed styles from CSSOM
     // (for stylesheets that inject rules via JS)
@@ -233,7 +278,7 @@
     // 3. Inline images as base64 (use progressive cache as fallback, then fetch)
     const progressiveCache = window.__recallProgressiveCache || null;
     const images = docClone.querySelectorAll('img');
-    const imageInlinePromises = [];
+    const imagesToFetch = [];
 
     for (const clonedImg of images) {
       const src = clonedImg.getAttribute('src');
@@ -263,25 +308,16 @@
         clonedImg.setAttribute('src', dataUrl);
         clonedImg.removeAttribute('srcset');
       } else {
-        // Try 3: Fetch image via network (cross-origin fallback)
-        const imgRef = clonedImg;
-        const imgUrl = absoluteSrc;
-        imageInlinePromises.push(
-          fetchImageAsBase64(imgUrl).then((fetched) => {
-            if (fetched) {
-              imgRef.setAttribute('src', fetched);
-              imgRef.removeAttribute('srcset');
-            }
-          })
-        );
+        // Queue for batched network fetch
+        imagesToFetch.push({ url: absoluteSrc, element: clonedImg });
       }
     }
 
-    // Wait for all fetch-based image conversions (with timeout)
-    if (imageInlinePromises.length > 0) {
+    // Fetch remaining images in parallel batches (max 6 concurrent)
+    if (imagesToFetch.length > 0) {
       await Promise.race([
-        Promise.allSettled(imageInlinePromises),
-        wait(10000), // 10 second timeout for image fetching
+        processBatchedImageFetch(imagesToFetch, 6),
+        wait(8000), // Reduced timeout: 8 seconds for batched fetching
       ]);
     }
 
@@ -352,7 +388,8 @@
 
     // 7. Inline background images in style attributes
     const styledElements = docClone.querySelectorAll('[style]');
-    const bgInlinePromises = [];
+    const bgImagesToFetch = [];
+    
     for (const el of styledElements) {
       const style = el.getAttribute('style');
       if (!style || !style.includes('url(') || style.includes('data:')) continue;
@@ -372,24 +409,33 @@
       if (cachedBg) {
         el.setAttribute('style', style.replace(urlMatch[0], `url('${cachedBg}')`));
       } else {
-        // Fetch as fallback
-        const elRef = el;
-        const matchRef = urlMatch;
-        const styleRef = style;
-        bgInlinePromises.push(
-          fetchImageAsBase64(bgUrl).then((fetched) => {
-            if (fetched) {
-              elRef.setAttribute('style', styleRef.replace(matchRef[0], `url('${fetched}')`));
-            }
-          })
-        );
+        // Queue for batched fetch
+        bgImagesToFetch.push({ 
+          url: bgUrl, 
+          element: el,
+          style: style,
+          match: urlMatch[0]
+        });
       }
     }
 
-    if (bgInlinePromises.length > 0) {
+    // Fetch background images in parallel batches
+    if (bgImagesToFetch.length > 0) {
       await Promise.race([
-        Promise.allSettled(bgInlinePromises),
-        wait(5000),
+        (async () => {
+          for (let i = 0; i < bgImagesToFetch.length; i += 6) {
+            const batch = bgImagesToFetch.slice(i, i + 6);
+            await Promise.allSettled(
+              batch.map(async ({ url, element, style, match }) => {
+                const dataUrl = await fetchImageAsBase64(url);
+                if (dataUrl) {
+                  element.setAttribute('style', style.replace(match, `url('${dataUrl}')`));
+                }
+              })
+            );
+          }
+        })(),
+        wait(4000), // Reduced timeout for background images: 4 seconds
       ]);
     }
 
