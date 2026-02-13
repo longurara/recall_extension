@@ -3,13 +3,15 @@
 import { MSG } from '../lib/constants.js';
 import { formatBytes, formatDate, decompressToString } from '../lib/utils.js';
 import { initTheme, createThemeToggle } from '../lib/theme.js';
+import { showConfirm, showAlert } from '../lib/dialog.js';
+import { initI18n, t, applyI18n } from '../lib/i18n.js';
 
 // ============================================================
 // IndexedDB direct access (viewer runs as extension page)
 // ============================================================
 
 const DB_NAME = 'RecallDB';
-const DB_VERSION = 3;
+const DB_VERSION = 5;
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -42,6 +44,25 @@ function openDB() {
         watchStore.createIndex('isActive', 'isActive', { unique: false });
         watchStore.createIndex('lastChecked', 'lastChecked', { unique: false });
         watchStore.createIndex('domain', 'domain', { unique: false });
+      }
+      if (oldVersion < 4) {
+        const collStore = db.createObjectStore('collections', { keyPath: 'id' });
+        collStore.createIndex('name', 'name', { unique: false });
+        collStore.createIndex('createdAt', 'createdAt', { unique: false });
+        const ruleStore = db.createObjectStore('autoTagRules', { keyPath: 'id' });
+        ruleStore.createIndex('domain', 'domain', { unique: false });
+        const tx = e.target.transaction;
+        const snapStore = tx.objectStore('snapshots');
+        if (!snapStore.indexNames.contains('isReadLater')) {
+          snapStore.createIndex('isReadLater', 'isReadLater', { unique: false });
+        }
+        if (!snapStore.indexNames.contains('collectionId')) {
+          snapStore.createIndex('collectionId', 'collectionId', { unique: false });
+        }
+      }
+      if (oldVersion < 5) {
+        const sessStore = db.createObjectStore('sessions', { keyPath: 'id' });
+        sessStore.createIndex('savedAt', 'savedAt', { unique: false });
       }
     };
   });
@@ -295,7 +316,7 @@ function renderTags(metadata) {
       type: MSG.UPDATE_SNAPSHOT_TAGS,
       id: metadata.id,
       tags: tags,
-    }).catch(() => {});
+    }).catch(() => { });
 
     renderTags(metadata);
   });
@@ -314,7 +335,7 @@ function renderTags(metadata) {
         type: MSG.UPDATE_SNAPSHOT_TAGS,
         id: metadata.id,
         tags: tags,
-      }).catch(() => {});
+      }).catch(() => { });
 
       renderTags(metadata);
     });
@@ -532,7 +553,7 @@ function toggleInfoBar(forceCollapse) {
   }
 
   // Save preference
-  dbPut('settings', { key: 'infoBarCollapsed', value: collapse }).catch(() => {});
+  dbPut('settings', { key: 'infoBarCollapsed', value: collapse }).catch(() => { });
 }
 
 // ============================================================
@@ -635,7 +656,7 @@ btnStar.addEventListener('click', async () => {
 btnDelete.addEventListener('click', async () => {
   if (!currentSnapshot) return;
 
-  if (!confirm('Delete this snapshot? This cannot be undone.')) return;
+  if (!await showConfirm('Delete this snapshot?\nThis cannot be undone.', { title: 'Delete Snapshot', type: 'danger', confirmText: 'Delete', cancelText: 'Cancel' })) return;
 
   try {
     await dbDelete('snapshots', currentSnapshot.id);
@@ -645,13 +666,13 @@ btnDelete.addEventListener('click', async () => {
     chrome.runtime.sendMessage({
       type: MSG.SNAPSHOT_DELETED,
       id: currentSnapshot.id,
-    }).catch(() => {});
+    }).catch(() => { });
 
     // Close tab or navigate to manager
     window.close();
   } catch (e) {
     console.error('[Recall Viewer] Delete error:', e);
-    alert('Failed to delete snapshot: ' + e.message);
+    showAlert('Failed to delete snapshot: ' + e.message, { type: 'error', title: 'Error' });
   }
 });
 
@@ -704,7 +725,7 @@ async function saveNotes() {
     type: MSG.UPDATE_SNAPSHOT_NOTES,
     id: currentSnapshot.id,
     notes: notes,
-  }).catch(() => {});
+  }).catch(() => { });
 
   notesStatus.textContent = 'Saved';
   setTimeout(() => { notesStatus.textContent = ''; }, 1500);
@@ -828,7 +849,7 @@ async function saveAnnotations() {
     type: MSG.UPDATE_SNAPSHOT_ANNOTATIONS,
     id: currentSnapshot.id,
     annotations: annotations,
-  }).catch(() => {});
+  }).catch(() => { });
 }
 
 function deleteAnnotation(index) {
@@ -1095,5 +1116,107 @@ document.addEventListener('keydown', (e) => {
 
 initTheme();
 createThemeToggle(document.getElementById('theme-toggle-container'));
+initI18n().then(() => applyI18n());
+
+// ============================================================
+// Share (Standalone HTML Export)
+// ============================================================
+
+const btnShare = document.getElementById('btn-share');
+if (btnShare) {
+  btnShare.addEventListener('click', async () => {
+    if (!currentSnapshot) return;
+    btnShare.disabled = true;
+    try {
+      await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+          type: MSG.EXPORT_STANDALONE_HTML,
+          id: currentSnapshot.id,
+        }, (response) => {
+          if (response?.success) resolve(response.data);
+          else reject(new Error(response?.error || 'Export failed'));
+        });
+      });
+    } catch (e) {
+      console.error('[Recall Viewer] Share export error:', e);
+      showAlert('Export failed: ' + e.message, { type: 'error', title: 'Export Failed' });
+    } finally {
+      setTimeout(() => { btnShare.disabled = false; }, 2000);
+    }
+  });
+}
+
+// ============================================================
+// AI Summary
+// ============================================================
+
+const btnSummarize = document.getElementById('btn-summarize');
+const summaryPanel = document.getElementById('summary-panel');
+const btnCloseSummary = document.getElementById('btn-close-summary');
+const summaryContent = document.getElementById('summary-content');
+const btnGenerateSummary = document.getElementById('btn-generate-summary');
+const summaryStatus = document.getElementById('summary-status');
+
+if (btnSummarize) {
+  btnSummarize.addEventListener('click', async () => {
+    if (!summaryPanel) return;
+    const isHidden = summaryPanel.classList.contains('hidden');
+    summaryPanel.classList.toggle('hidden');
+
+    // Load existing summary
+    if (isHidden && currentSnapshot) {
+      try {
+        const resp = await new Promise((resolve, reject) => {
+          chrome.runtime.sendMessage({
+            type: MSG.GET_SUMMARY,
+            id: currentSnapshot.id,
+          }, (response) => {
+            if (response?.success) resolve(response.data);
+            else reject(new Error(response?.error || 'Failed'));
+          });
+        });
+        if (resp.summary) {
+          summaryContent.innerHTML = `<p>${resp.summary}</p>`;
+        }
+      } catch { /* ignore */ }
+    }
+  });
+}
+
+if (btnCloseSummary) {
+  btnCloseSummary.addEventListener('click', () => {
+    summaryPanel.classList.add('hidden');
+  });
+}
+
+if (btnGenerateSummary) {
+  btnGenerateSummary.addEventListener('click', async () => {
+    if (!currentSnapshot) return;
+    btnGenerateSummary.disabled = true;
+    summaryStatus.textContent = t('viewer-generating');
+    summaryContent.innerHTML = '<p class="summary-placeholder">' + t('viewer-generating') + '</p>';
+
+    try {
+      const resp = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+          type: MSG.GENERATE_SUMMARY,
+          id: currentSnapshot.id,
+        }, (response) => {
+          if (response?.success) resolve(response.data);
+          else reject(new Error(response?.error || 'Generation failed'));
+        });
+      });
+
+      summaryContent.innerHTML = `<p>${resp.summary}</p>`;
+      summaryStatus.textContent = 'Done';
+      setTimeout(() => { summaryStatus.textContent = ''; }, 2000);
+    } catch (e) {
+      summaryContent.innerHTML = `<p class="summary-error">Error: ${e.message}</p>`;
+      summaryStatus.textContent = 'Failed';
+    } finally {
+      btnGenerateSummary.disabled = false;
+    }
+  });
+}
 
 init();

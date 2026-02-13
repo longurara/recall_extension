@@ -2,6 +2,8 @@
 
 import { MSG } from '../lib/constants.js';
 import { initTheme, createThemeToggle } from '../lib/theme.js';
+import { showConfirm } from '../lib/dialog.js';
+import { initI18n, t, applyI18n } from '../lib/i18n.js';
 
 function sendMessage(message) {
   return new Promise((resolve, reject) => {
@@ -21,6 +23,10 @@ function sendMessage(message) {
 // ============================================================
 
 async function init() {
+  // Load language
+  await initI18n();
+  applyI18n();
+
   // Load snapshot count
   try {
     const snapshots = await sendMessage({ type: MSG.GET_SNAPSHOTS });
@@ -55,17 +61,17 @@ async function init() {
 document.getElementById('btn-capture').addEventListener('click', async () => {
   const btn = document.getElementById('btn-capture');
   btn.disabled = true;
-  btn.textContent = 'Capturing...';
+  btn.textContent = t('popup-capturing');
 
   try {
     await sendMessage({ type: MSG.CAPTURE_PAGE });
-    btn.textContent = 'Captured!';
+    btn.textContent = t('popup-captured');
     setTimeout(() => window.close(), 1000);
   } catch (e) {
-    btn.textContent = 'Failed';
+    btn.textContent = t('popup-failed');
     console.error(e);
     setTimeout(() => {
-      btn.textContent = 'Capture This Page';
+      btn.textContent = t('popup-capture');
       btn.disabled = false;
     }, 2000);
   }
@@ -75,22 +81,22 @@ document.getElementById('btn-capture').addEventListener('click', async () => {
 document.getElementById('btn-deep-capture').addEventListener('click', async () => {
   const btn = document.getElementById('btn-deep-capture');
 
-  if (!confirm('Deep Capture uses Chrome DevTools Protocol.\n\nChrome will show a "debugging" banner while capturing.\nThis captures ALL page resources for maximum fidelity.\n\nContinue?')) {
+  if (!await showConfirm('Chrome will show a "debugging" banner while capturing.\nThis captures ALL page resources for maximum fidelity.', { title: 'Deep Capture', confirmText: 'Continue', cancelText: 'Cancel' })) {
     return;
   }
 
   btn.disabled = true;
-  btn.textContent = 'Deep Capturing...';
+  btn.textContent = t('popup-deep-capturing');
 
   try {
     await sendMessage({ type: MSG.CAPTURE_DEEP });
-    btn.textContent = 'Done!';
+    btn.textContent = t('popup-done');
     setTimeout(() => window.close(), 1000);
   } catch (e) {
-    btn.textContent = 'Failed';
+    btn.textContent = t('popup-failed');
     console.error(e);
     setTimeout(() => {
-      btn.textContent = 'Deep Capture (CDP)';
+      btn.textContent = t('popup-deep-capture');
       btn.disabled = false;
     }, 2000);
   }
@@ -135,7 +141,7 @@ document.getElementById('toggle-auto').addEventListener('change', async (e) => {
 document.getElementById('btn-watch-page').addEventListener('click', async () => {
   const btn = document.getElementById('btn-watch-page');
   btn.disabled = true;
-  btn.textContent = 'Adding...';
+  btn.textContent = t('popup-adding');
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -146,17 +152,132 @@ document.getElementById('btn-watch-page').addEventListener('click', async () => 
       url: tab.url,
       title: tab.title,
     });
-    btn.textContent = 'Watching!';
+    btn.textContent = t('popup-watching');
     setTimeout(() => window.close(), 1000);
   } catch (e) {
     if (e.message && e.message.includes('already')) {
-      btn.textContent = 'Already watching';
+      btn.textContent = t('popup-already-watching');
     } else {
-      btn.textContent = 'Failed';
+      btn.textContent = t('popup-failed');
       console.error(e);
     }
     setTimeout(() => {
-      btn.textContent = 'Watch This Page';
+      btn.textContent = t('popup-watch');
+      btn.disabled = false;
+    }, 2000);
+  }
+});
+
+// Read Later
+document.getElementById('btn-read-later').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-read-later');
+  btn.disabled = true;
+  btn.textContent = t('popup-saving');
+
+  try {
+    await sendMessage({ type: MSG.MARK_READ_LATER });
+    btn.textContent = t('popup-saved');
+    setTimeout(() => window.close(), 1000);
+  } catch (e) {
+    btn.textContent = t('popup-failed');
+    console.error(e);
+    setTimeout(() => {
+      btn.textContent = t('popup-read-later');
+      btn.disabled = false;
+    }, 2000);
+  }
+});
+// Restore Last Session
+document.getElementById('btn-restore-session').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-restore-session');
+  btn.disabled = true;
+  btn.textContent = t('popup-checking');
+
+  try {
+    const sessions = await sendMessage({ type: MSG.GET_SESSIONS });
+    if (!sessions || sessions.length === 0) {
+      btn.textContent = t('popup-no-session');
+      setTimeout(() => {
+        btn.textContent = t('popup-restore-session');
+        btn.disabled = false;
+      }, 2000);
+      return;
+    }
+
+    const latest = sessions[0];
+    const tabCount = latest.tabs ? latest.tabs.length : 0;
+    if (tabCount === 0) {
+      btn.textContent = t('popup-empty-session');
+      setTimeout(() => {
+        btn.textContent = t('popup-restore-session');
+        btn.disabled = false;
+      }, 2000);
+      return;
+    }
+
+    if (!await showConfirm(`Restore ${tabCount} tab(s) from ${new Date(latest.savedAt).toLocaleString()}?`, { title: 'Restore Session', confirmText: 'Restore', cancelText: t('dialog-cancel') })) {
+      btn.textContent = t('popup-restore-session');
+      btn.disabled = false;
+      return;
+    }
+
+    btn.textContent = t('popup-restoring');
+    await sendMessage({ type: MSG.RESTORE_SESSION, sessionId: latest.id, mode: 'online' });
+    btn.textContent = `Restored ${tabCount} tabs!`;
+    setTimeout(() => window.close(), 1500);
+  } catch (e) {
+    btn.textContent = t('popup-failed');
+    console.error(e);
+    setTimeout(() => {
+      btn.textContent = t('popup-restore-session');
+      btn.disabled = false;
+    }, 2000);
+  }
+});
+
+// Save Current Session
+document.getElementById('btn-save-session').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-save-session');
+  btn.disabled = true;
+  btn.textContent = t('popup-saving');
+
+  try {
+    await sendMessage({ type: MSG.SAVE_SESSION });
+    btn.textContent = t('popup-session-saved');
+    setTimeout(() => {
+      btn.textContent = t('popup-save-session');
+      btn.disabled = false;
+    }, 1500);
+  } catch (e) {
+    btn.textContent = t('popup-failed');
+    console.error(e);
+    setTimeout(() => {
+      btn.textContent = t('popup-save-session');
+      btn.disabled = false;
+    }, 2000);
+  }
+});
+
+// Save All Open Tabs
+document.getElementById('btn-save-all-tabs').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-save-all-tabs');
+
+  if (!await showConfirm('Capture all open tabs in this window?\nThis may take a moment.', { title: 'Save All Tabs', confirmText: 'Save All', cancelText: 'Cancel' })) {
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = t('popup-saving');
+
+  try {
+    const result = await sendMessage({ type: MSG.SAVE_ALL_TABS });
+    btn.textContent = `Saved ${result.captured}/${result.total} tabs!`;
+    setTimeout(() => window.close(), 2000);
+  } catch (e) {
+    btn.textContent = t('popup-failed');
+    console.error(e);
+    setTimeout(() => {
+      btn.textContent = t('popup-save-all-tabs');
       btn.disabled = false;
     }, 2000);
   }

@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Recall</title>
   <link rel="stylesheet" href="sidepanel.css">
 </head>
+
 <body>
   <!-- Header -->
   <div class="header">
@@ -13,37 +15,52 @@
       <h1 class="logo">Recall</h1>
       <div class="header-actions">
         <button id="btn-capture" class="btn btn-sm btn-primary" title="Capture current page">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="3" fill="currentColor"/></svg>
-          Capture
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" />
+            <circle cx="8" cy="8" r="3" fill="currentColor" />
+          </svg>
+          <span data-i18n="sp-capture">Capture</span>
         </button>
         <button id="btn-manager" class="btn btn-sm btn-ghost" title="Open Manager">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 3h12M2 8h12M2 13h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M2 3h12M2 8h12M2 13h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
         </button>
         <span id="theme-toggle-container"></span>
         <button id="btn-settings" class="btn btn-sm btn-ghost" title="Settings">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6L13 13M13 3l-1.4 1.4M4.4 11.6L3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.5" />
+            <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6L13 13M13 3l-1.4 1.4M4.4 11.6L3 13"
+              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
         </button>
       </div>
     </div>
     <!-- Search -->
     <div class="search-box">
-      <svg class="search-icon" width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5L15 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      <input id="search-input" type="text" placeholder="Search snapshots..." autocomplete="off">
+      <svg class="search-icon" width="14" height="14" viewBox="0 0 16 16" fill="none">
+        <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.5" />
+        <path d="M10.5 10.5L15 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+      </svg>
+      <input id="search-input" type="text" data-i18n-placeholder="sp-search" placeholder="Search snapshots..."
+        autocomplete="off">
       <button id="btn-clear-search" class="btn-clear hidden" title="Clear">
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+          <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
       </button>
     </div>
     <!-- Filters -->
     <div class="filters">
       <select id="filter-domain" class="filter-select" title="Filter by domain">
-        <option value="">All domains</option>
+        <option value="" data-i18n="sp-all-domains">All domains</option>
       </select>
       <select id="filter-sort" class="filter-select" title="Sort by">
-        <option value="newest">Newest first</option>
-        <option value="oldest">Oldest first</option>
-        <option value="largest">Largest first</option>
-        <option value="smallest">Smallest first</option>
-        <option value="title">Title A-Z</option>
+        <option value="newest" data-i18n="sp-sort-newest">Newest first</option>
+        <option value="oldest" data-i18n="sp-sort-oldest">Oldest first</option>
+        <option value="largest" data-i18n="sp-sort-largest">Largest first</option>
+        <option value="smallest" data-i18n="sp-sort-smallest">Smallest first</option>
+        <option value="title" data-i18n="sp-sort-title">Title A-Z</option>
       </select>
     </div>
   </div>
@@ -55,15 +72,23 @@
 
   <!-- Empty State -->
   <div id="empty-state" class="empty-state hidden">
-    <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="4" y="8" width="40" height="32" rx="4" stroke="#ccc" stroke-width="2"/><path d="M4 16h40" stroke="#ccc" stroke-width="2"/><circle cx="10" cy="12" r="1.5" fill="#ccc"/><circle cx="16" cy="12" r="1.5" fill="#ccc"/><circle cx="22" cy="12" r="1.5" fill="#ccc"/><path d="M16 28l6-6 6 6" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 22v10" stroke="#ccc" stroke-width="2" stroke-linecap="round"/></svg>
-    <p class="empty-title">No snapshots yet</p>
-    <p class="empty-text">Browse the web and pages will be automatically captured.</p>
+    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+      <rect x="4" y="8" width="40" height="32" rx="4" stroke="#ccc" stroke-width="2" />
+      <path d="M4 16h40" stroke="#ccc" stroke-width="2" />
+      <circle cx="10" cy="12" r="1.5" fill="#ccc" />
+      <circle cx="16" cy="12" r="1.5" fill="#ccc" />
+      <circle cx="22" cy="12" r="1.5" fill="#ccc" />
+      <path d="M16 28l6-6 6 6" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+      <path d="M24 22v10" stroke="#ccc" stroke-width="2" stroke-linecap="round" />
+    </svg>
+    <p class="empty-title" data-i18n="sp-no-snapshots">No snapshots yet</p>
+    <p class="empty-text" data-i18n="sp-no-snapshots-desc">Browse the web and pages will be automatically captured.</p>
   </div>
 
   <!-- No Results -->
   <div id="no-results" class="empty-state hidden">
-    <p class="empty-title">No results found</p>
-    <p class="empty-text">Try a different search term or filter.</p>
+    <p class="empty-title" data-i18n="sp-no-results">No results found</p>
+    <p class="empty-text" data-i18n="sp-no-results-desc">Try a different search term or filter.</p>
   </div>
 
   <!-- Footer -->
@@ -78,4 +103,5 @@
 
   <script src="sidepanel.js" type="module"></script>
 </body>
+
 </html>

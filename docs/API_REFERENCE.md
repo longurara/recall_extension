@@ -1,4 +1,268 @@
-# API Reference
+# Tài liệu API / API Reference
+
+> **[🇻🇳 Tiếng Việt](#tiếng-việt)** | **[🇬🇧 English](#english)**
+
+---
+
+# 🇻🇳 Tiếng Việt
+
+Tài liệu API module nội bộ cho các nhà phát triển làm việc trên tiện ích Recall.
+
+---
+
+## Mục lục
+
+- [lib/constants.js](#libconstantsjs-vi)
+- [lib/db.js](#libdbjs-vi)
+- [lib/i18n.js](#libi18njs-vi)
+- [lib/utils.js](#libutilsjs-vi)
+- [lib/theme.js](#libthemejs-vi)
+- [lib/dialog.js](#libdialogjs-vi)
+- [lib/storage-manager.js](#libstorage-managerjs-vi)
+- [lib/zip.js](#libzipjs-vi)
+- [background/capture-manager.js](#backgroundcapture-managerjs-vi)
+- [background/deep-capture.js](#backgrounddeep-capturejs-vi)
+- [background/watcher.js](#backgroundwatcherjs-vi)
+- [background/backup-exporter.js](#backgroundbackup-exporterjs-vi)
+- [Tham chiếu loại tin nhắn](#tham-chiếu-loại-tin-nhắn)
+
+---
+
+## lib/constants.js {#libconstantsjs-vi}
+
+Hằng số dùng chung được import bởi tất cả module.
+
+### Hằng số Database
+
+| Export | Giá trị | Mô tả |
+|--------|---------|-------|
+| `DB_NAME` | `'RecallDB'` | Tên database IndexedDB |
+| `DB_VERSION` | `5` | Phiên bản schema hiện tại |
+| `STORE_SNAPSHOTS` | `'snapshots'` | Store metadata |
+| `STORE_SNAPSHOT_DATA` | `'snapshotData'` | Store dữ liệu nhị phân |
+| `STORE_SETTINGS` | `'settings'` | Store cài đặt |
+| `STORE_WATCHED_PAGES` | `'watchedPages'` | Store theo dõi trang |
+| `STORE_COLLECTIONS` | `'collections'` | Store bộ sưu tập |
+| `STORE_AUTO_TAG_RULES` | `'autoTagRules'` | Store quy tắc gắn thẻ tự động |
+| `STORE_SESSIONS` | `'sessions'` | Store phiên đã lưu |
+
+### Loại chụp
+
+| Export | Giá trị |
+|--------|---------|
+| `CAPTURE_AUTO` | `'auto'` |
+| `CAPTURE_MANUAL` | `'manual'` |
+| `CAPTURE_DEEP` | `'deep'` |
+| `CAPTURE_CLIP` | `'clip'` |
+| `CAPTURE_READ_LATER` | `'readlater'` |
+
+### `DEFAULT_SETTINGS`
+
+Đối tượng cài đặt mặc định đầy đủ bao gồm: chụp, ngôn ngữ, bộ nhớ, AI, theme, thông báo, loại trừ domain/protocol, thumbnail.
+
+### `MSG` — Loại tin nhắn
+
+50+ hằng số loại tin nhắn. Xem [Tham chiếu loại tin nhắn](#tham-chiếu-loại-tin-nhắn).
+
+### `BADGE_COLORS`
+
+| Key | Màu | Sử dụng |
+|-----|-----|---------|
+| `CAPTURING` | `#FF9800` (cam) | Đang chụp |
+| `SUCCESS` | `#4CAF50` (xanh) | Chụp xong |
+| `ERROR` | `#F44336` (đỏ) | Chụp thất bại |
+| `DISABLED` | `#9E9E9E` (xám) | Tắt tự động chụp |
+
+---
+
+## lib/db.js {#libdbjs-vi}
+
+Wrapper IndexedDB cung cấp tất cả thao tác database. Tất cả hàm đều async.
+
+### Thao tác Snapshot
+
+| Hàm | Mô tả |
+|-----|-------|
+| `saveSnapshot(metadata)` | Lưu/cập nhật metadata |
+| `getSnapshot(id)` | Lấy theo ID |
+| `getAllSnapshots()` | Lấy tất cả, sắp xếp theo timestamp desc |
+| `getSnapshotsPaginated(offset, limit)` | Truy vấn phân trang |
+| `searchSnapshots(query)` | Tìm theo tiêu đề/URL/domain |
+| `getSnapshotsByDomain(domain)` | Lọc theo domain |
+| `hasRecentDuplicate(url, minutes)` | Kiểm tra cửa sổ dedup |
+| `deleteSnapshot(id)` | Xóa metadata + data |
+| `deleteSnapshots(ids)` | Xóa hàng loạt |
+| `updateSnapshot(id, updates)` | Cập nhật từng phần |
+| `getSnapshotCount()` | Đếm tổng |
+| `getAllDomains()` | Domain duy nhất với số lượng |
+
+### Thao tác dữ liệu Snapshot
+
+| Hàm | Mô tả |
+|-----|-------|
+| `saveSnapshotData(data)` | Lưu HTML nén + text |
+| `getSnapshotData(id)` | Lấy dữ liệu theo ID |
+
+### Thao tác cài đặt
+
+| Hàm | Mô tả |
+|-----|-------|
+| `getSetting(key)` | Lấy cài đặt đơn (có fallback) |
+| `getAllSettings()` | Merge đã lưu + mặc định |
+| `saveSetting(key, value)` | Lưu cài đặt đơn |
+| `saveSettings(obj)` | Lưu nhiều cài đặt |
+
+### Tìm kiếm toàn văn
+
+| Hàm | Mô tả |
+|-----|-------|
+| `searchContentForIds(query)` | Tìm nội dung → IDs |
+| `searchSnapshotsFullText(query)` | Kết hợp metadata + nội dung |
+
+### Bộ sưu tập, Quy tắc, Phiên, Theo dõi, Bộ nhớ
+
+Mỗi loại đều có bộ CRUD đầy đủ: `save`, `get`, `getAll`, `delete`, `update`.
+
+---
+
+## lib/i18n.js {#libi18njs-vi}
+
+Module đa ngôn ngữ tập trung (Tiếng Anh / Tiếng Việt).
+
+### Exports
+
+#### `initI18n() → Promise<void>`
+Lấy cài đặt ngôn ngữ từ `GET_SETTINGS`. Đặt `currentLang`. Gọi một lần khi tải trang.
+
+#### `t(key) → string`
+Lấy chuỗi đã dịch. Fallback: `vi[key]` → `en[key]` → `key`.
+
+#### `getLang() → string`
+Trả về mã ngôn ngữ hiện tại (`'en'` hoặc `'vi'`).
+
+#### `applyI18n(root?) → void`
+Duyệt DOM và dịch:
+- `[data-i18n]` → đặt `textContent`
+- `[data-i18n-placeholder]` → đặt `placeholder`
+- `[data-i18n-title]` → đặt `title`
+
+### Translation Keys (~100+)
+
+Tổ chức theo thành phần: `popup-*`, `mgr-*`, `viewer-*`, `dash-*`, `sp-*`, `dialog-*`.
+
+---
+
+## lib/theme.js {#libthemejs-vi}
+
+#### `initTheme() → {toggle, getTheme}`
+Khởi tạo: localStorage → tùy chọn hệ thống → thuộc tính `data-theme`.
+
+#### `createThemeToggle(container) → HTMLButtonElement`
+Tạo và inject nút bật/tắt theme.
+
+---
+
+## lib/dialog.js {#libdialogjs-vi}
+
+#### `showConfirm(options) → Promise<boolean>`
+Hiển thị hộp thoại xác nhận. `title`, `message`, `confirmText?`, `cancelText?`, `isDanger?`.
+
+#### `showAlert(options) → Promise<void>`
+Hiển thị hộp thoại cảnh báo. `title`, `message`, `okText?`.
+
+---
+
+## lib/storage-manager.js {#libstorage-managerjs-vi}
+
+### Lớp: `StorageManager` (singleton: `storageManager`)
+
+| Phương thức | Trả về | Mô tả |
+|-------------|--------|-------|
+| `getSettings()` | `Promise<Object>` | Cài đặt đã cache |
+| `invalidateCache()` | `void` | Xóa cache cài đặt |
+| `getUsageStats()` | `Promise<UsageStats>` | Thống kê bộ nhớ |
+| `hasRoom(estimatedSize?)` | `Promise<boolean>` | Kiểm tra dung lượng |
+| `autoCleanup(targetFreeBytes?)` | `Promise<number>` | Xóa cũ nhất, trả về số lượng |
+| `timeBasedCleanup()` | `Promise<number>` | Xóa auto-capture cũ |
+| `checkAndCleanup()` | `Promise<{ok, message, cleaned}>` | Kiểm tra trước chụp |
+
+---
+
+## lib/zip.js {#libzipjs-vi}
+
+#### `createZip(files) → Blob`
+Tạo ZIP từ mảng `{name, data}`. `data` có thể là string hoặc Blob.
+
+---
+
+## background/capture-manager.js {#backgroundcapture-managerjs-vi}
+
+#### `captureTab(tabId, captureType?, flowMeta?) → Promise<Object|null>`
+Điều phối chụp chính. Trả về metadata hoặc `null` nếu bỏ qua/thất bại.
+
+---
+
+## background/deep-capture.js {#backgrounddeep-capturejs-vi}
+
+#### `deepCaptureTab(tabId, flowMeta?) → Promise<Object>`
+Chụp sâu dựa trên CDP. Trả về metadata. Ném lỗi khi thất bại.
+
+---
+
+## background/watcher.js {#backgroundwatcherjs-vi}
+
+#### `watchPage(opts) → Promise<Object>` — Bắt đầu theo dõi URL
+#### `unwatchPage(id) → Promise<{deleted}>` — Dừng theo dõi
+#### `checkAllDuePages() → Promise<{checked, changed}>` — Kiểm tra tất cả trang đến hạn
+#### `checkWatchedPage(entry) → Promise<{changed, entry?, error?}>` — Kiểm tra một trang
+
+---
+
+## background/backup-exporter.js {#backgroundbackup-exporterjs-vi}
+
+#### `exportBackup() → Promise<Blob>` — Xuất tất cả dữ liệu dạng ZIP
+#### `importBackup(file) → Promise<{imported, skipped}>` — Nhập dữ liệu từ ZIP
+
+---
+
+## Tham chiếu loại tin nhắn
+
+### Tin nhắn chụp
+
+| Loại | Hướng | Tham số | Phản hồi |
+|------|-------|---------|----------|
+| `CAPTURE_PAGE` | UI → SW | `{tabId?}` | Metadata |
+| `CAPTURE_DOM` | SW → Content | — | `{html, textContent, ...}` |
+| `CAPTURE_DEEP` | UI → SW | `{tabId?}` | Metadata |
+| `CAPTURE_CLIP` | UI → SW | `{tabId?, html, textContent}` | Metadata |
+
+### Tin nhắn CRUD
+
+| Loại | Hướng | Tham số | Phản hồi |
+|------|-------|---------|----------|
+| `GET_SNAPSHOTS` | UI → SW | `{query?, domain?}` | `Metadata[]` |
+| `GET_SNAPSHOT` | UI → SW | `{id}` | `Metadata` |
+| `DELETE_SNAPSHOT` | UI → SW | `{id}` | `{deleted: id}` |
+| `DELETE_SNAPSHOTS` | UI → SW | `{ids}` | `{deleted: ids}` |
+
+### Cài đặt
+
+| Loại | Hướng | Phản hồi |
+|------|-------|----------|
+| `GET_SETTINGS` | UI → SW | Đối tượng cài đặt |
+| `UPDATE_SETTINGS` | UI → SW | `{updated}` |
+| `TOGGLE_AUTO_CAPTURE` | UI → SW | `{autoCapture: bool}` |
+
+### Đọc sau, Bộ sưu tập, AI, Theo dõi, Phiên, Ghim/Rác
+
+Tất cả tuân theo mẫu CRUD chuẩn. Xem phần English bên dưới để có bảng tham chiếu đầy đủ.
+
+**Chú giải:** SW = Service Worker, UI = Trang extension, Content = Content scripts
+
+---
+---
+
+# 🇬🇧 English
 
 Internal module API documentation for developers working on the Recall extension.
 
@@ -8,621 +272,296 @@ Internal module API documentation for developers working on the Recall extension
 
 - [lib/constants.js](#libconstantsjs)
 - [lib/db.js](#libdbjs)
+- [lib/i18n.js](#libi18njs)
 - [lib/utils.js](#libutilsjs)
 - [lib/theme.js](#libthemejs)
+- [lib/dialog.js](#libdialogjs)
 - [lib/storage-manager.js](#libstorage-managerjs)
+- [lib/zip.js](#libzipjs)
 - [background/capture-manager.js](#backgroundcapture-managerjs)
 - [background/deep-capture.js](#backgrounddeep-capturejs)
 - [background/watcher.js](#backgroundwatcherjs)
+- [background/backup-exporter.js](#backgroundbackup-exporterjs)
 - [content/snapshot.js](#contentsnapshotjs)
+- [content/spotlight.js](#contentspotlightjs)
 - [Message Types Reference](#message-types-reference)
 
 ---
 
 ## lib/constants.js
 
-Shared constants imported by all modules.
+### Database Constants
 
-### Exports
+| Export | Value | Description |
+|--------|-------|-------------|
+| `DB_NAME` | `'RecallDB'` | IndexedDB database name |
+| `DB_VERSION` | `5` | Current schema version |
+| `STORE_SNAPSHOTS` | `'snapshots'` | Metadata store |
+| `STORE_SNAPSHOT_DATA` | `'snapshotData'` | Binary data store |
+| `STORE_SETTINGS` | `'settings'` | Settings store |
+| `STORE_WATCHED_PAGES` | `'watchedPages'` | Watch entries store |
+| `STORE_COLLECTIONS` | `'collections'` | Collections store |
+| `STORE_AUTO_TAG_RULES` | `'autoTagRules'` | Auto-tag rules store |
+| `STORE_SESSIONS` | `'sessions'` | Saved sessions store |
 
-#### `DB_NAME`
-```javascript
-const DB_NAME = 'RecallDB'
-```
-IndexedDB database name.
+### Capture Types
 
-#### `DB_VERSION`
-```javascript
-const DB_VERSION = 3
-```
-Current schema version. Incrementing triggers `onupgradeneeded`.
+`CAPTURE_AUTO`, `CAPTURE_MANUAL`, `CAPTURE_DEEP`, `CAPTURE_CLIP`, `CAPTURE_READ_LATER`
 
-#### `STORE_SNAPSHOTS`, `STORE_SNAPSHOT_DATA`, `STORE_SETTINGS`, `STORE_WATCHED_PAGES`
-```javascript
-const STORE_SNAPSHOTS = 'snapshots'
-const STORE_SNAPSHOT_DATA = 'snapshotData'
-const STORE_SETTINGS = 'settings'
-const STORE_WATCHED_PAGES = 'watchedPages'
-```
-Object store name constants.
+### `DEFAULT_SETTINGS`
 
-#### `CAPTURE_AUTO`, `CAPTURE_MANUAL`, `CAPTURE_DEEP`
-```javascript
-const CAPTURE_AUTO = 'auto'
-const CAPTURE_MANUAL = 'manual'
-const CAPTURE_DEEP = 'deep'
-```
-Capture type identifiers.
+Complete default settings object. See source for all fields.
 
-#### `DEFAULT_SETTINGS`
-```javascript
-const DEFAULT_SETTINGS = {
-  maxStorageMB: 2048,
-  autoCapture: true,
-  captureDelay: 2000,
-  excludeDomains: ['chrome.google.com', 'chromewebstore.google.com', 'extensions'],
-  excludeProtocols: ['chrome:', 'chrome-extension:', 'about:', 'devtools:', 'edge:', 'brave:', 'file:', 'data:', 'blob:'],
-  thumbnailQuality: 0.6,
-  thumbnailMaxWidth: 320,
-  thumbnailMaxHeight: 200,
-  maxSnapshotSizeMB: 15,
-  duplicateWindowMinutes: 5,
-  autoCleanupEnabled: true,
-  autoCleanupThreshold: 0.9,
-  autoCleanupDays: 0,
-  infoBarCollapsed: false,
-}
-```
-Default values for all settings. Used as fallbacks when settings are not yet saved.
+### `BADGE_COLORS`
 
-#### `MSG`
-```javascript
-const MSG = {
-  CAPTURE_PAGE: 'CAPTURE_PAGE',
-  CAPTURE_DOM: 'CAPTURE_DOM',
-  CAPTURE_DOM_RESULT: 'CAPTURE_DOM_RESULT',
-  CAPTURE_DEEP: 'CAPTURE_DEEP',
-  CAPTURE_STATUS: 'CAPTURE_STATUS',
-  GET_SNAPSHOTS: 'GET_SNAPSHOTS',
-  GET_SNAPSHOT: 'GET_SNAPSHOT',
-  DELETE_SNAPSHOT: 'DELETE_SNAPSHOT',
-  DELETE_SNAPSHOTS: 'DELETE_SNAPSHOTS',
-  GET_SETTINGS: 'GET_SETTINGS',
-  UPDATE_SETTINGS: 'UPDATE_SETTINGS',
-  GET_STORAGE_USAGE: 'GET_STORAGE_USAGE',
-  EXPORT_MHTML: 'EXPORT_MHTML',
-  OPEN_VIEWER: 'OPEN_VIEWER',
-  OPEN_MANAGER: 'OPEN_MANAGER',
-  SNAPSHOT_SAVED: 'SNAPSHOT_SAVED',
-  SNAPSHOT_DELETED: 'SNAPSHOT_DELETED',
-  TOGGLE_AUTO_CAPTURE: 'TOGGLE_AUTO_CAPTURE',
-  GET_NAVIGATION_FLOWS: 'GET_NAVIGATION_FLOWS',
-  GET_FLOW_SNAPSHOTS: 'GET_FLOW_SNAPSHOTS',
-  SEARCH_CONTENT: 'SEARCH_CONTENT',
-  SPOTLIGHT_SEARCH: 'SPOTLIGHT_SEARCH',
-  CHECK_URL_SNAPSHOTS: 'CHECK_URL_SNAPSHOTS',
-  UPDATE_SNAPSHOT_TAGS: 'UPDATE_SNAPSHOT_TAGS',
-  UPDATE_SNAPSHOT_NOTES: 'UPDATE_SNAPSHOT_NOTES',
-  UPDATE_SNAPSHOT_ANNOTATIONS: 'UPDATE_SNAPSHOT_ANNOTATIONS',
-  WATCH_PAGE: 'WATCH_PAGE',
-  UNWATCH_PAGE: 'UNWATCH_PAGE',
-  GET_WATCHED_PAGES: 'GET_WATCHED_PAGES',
-  UPDATE_WATCH: 'UPDATE_WATCH',
-  CHECK_WATCHED_NOW: 'CHECK_WATCHED_NOW',
-  WATCHED_PAGE_CHANGED: 'WATCHED_PAGE_CHANGED',
-}
-```
-All message type constants. See [Message Types Reference](#message-types-reference) for detailed usage.
-
-#### `BADGE_COLORS`
-```javascript
-const BADGE_COLORS = {
-  CAPTURING: '#FF9800',  // Orange
-  SUCCESS: '#4CAF50',    // Green
-  ERROR: '#F44336',      // Red
-  DISABLED: '#9E9E9E',   // Grey
-}
-```
-
-#### `PLACEHOLDER_IMAGE`
-SVG data URI used as placeholder for failed image inlining.
+`CAPTURING` (#FF9800), `SUCCESS` (#4CAF50), `ERROR` (#F44336), `DISABLED` (#9E9E9E)
 
 ---
 
 ## lib/db.js
 
-IndexedDB wrapper providing all database operations. All functions are async and return Promises.
-
-### Database Connection
-
-#### `openDB() → Promise<IDBDatabase>`
-Opens (or returns cached) IndexedDB connection. Handles schema upgrades for all 3 versions. The connection is cached as a module-level singleton. Automatically handles `onclose` and `onversionchange` events.
+IndexedDB wrapper. All functions are async.
 
 ### Snapshot Operations
 
-#### `saveSnapshot(metadata) → Promise<void>`
-Save or update snapshot metadata.
-- **metadata** `{Object}` - Full snapshot metadata object (must include `id`)
+`saveSnapshot`, `getSnapshot`, `getAllSnapshots`, `getSnapshotsPaginated`, `searchSnapshots`, `getSnapshotsByDomain`, `hasRecentDuplicate`, `deleteSnapshot`, `deleteSnapshots`, `updateSnapshot`, `getSnapshotCount`, `getAllDomains`
 
-#### `getSnapshot(id) → Promise<Object|undefined>`
-Get a single snapshot's metadata by ID.
-- **id** `{string}` - Snapshot UUID
+### Snapshot Data
 
-#### `getAllSnapshots() → Promise<Object[]>`
-Get all snapshots sorted by timestamp descending (newest first). Uses the `timestamp` index with a reverse cursor.
+`saveSnapshotData`, `getSnapshotData`
 
-#### `getSnapshotsPaginated(offset?, limit?) → Promise<Object[]>`
-Get snapshots with pagination.
-- **offset** `{number}` - Number of items to skip (default: 0)
-- **limit** `{number}` - Maximum items to return (default: 50)
+### Settings
 
-#### `searchSnapshots(query) → Promise<Object[]>`
-Search snapshots by title, URL, or domain (case-insensitive substring match).
-- **query** `{string}` - Search query
+`getSetting`, `getAllSettings`, `saveSetting`, `saveSettings`
 
-#### `getSnapshotsByDomain(domain) → Promise<Object[]>`
-Get all snapshots for a specific domain, sorted by timestamp descending.
-- **domain** `{string}` - Hostname to filter by
+### Navigation Flows
 
-#### `getSnapshotsByUrl(url) → Promise<Object[]>`
-Get all snapshots for a specific URL, sorted by timestamp descending.
-- **url** `{string}` - Full URL to filter by
+`getSnapshotsBySessionId`, `getNavigationFlows`
 
-#### `hasRecentDuplicate(url, withinMinutes?) → Promise<boolean>`
-Check if a snapshot of this URL exists within the time window.
-- **url** `{string}` - URL to check
-- **withinMinutes** `{number}` - Time window (default: 5)
+### Full-Text Search
 
-#### `deleteSnapshot(id) → Promise<void>`
-Delete a snapshot's metadata AND data in a single transaction.
-- **id** `{string}` - Snapshot UUID
+`searchContentForIds`, `searchSnapshotsFullText`
 
-#### `deleteSnapshots(ids) → Promise<void>`
-Delete multiple snapshots (metadata + data) in a single transaction.
-- **ids** `{string[]}` - Array of snapshot UUIDs
+### Watched Pages
 
-#### `updateSnapshot(id, updates) → Promise<void>`
-Partial update of snapshot metadata. Merges `updates` into existing record.
-- **id** `{string}` - Snapshot UUID
-- **updates** `{Object}` - Fields to update
+`saveWatchedPage`, `getWatchedPage`, `getAllWatchedPages`, `getActiveWatchedPages`, `getWatchedPageByUrl`, `updateWatchedPage`, `deleteWatchedPage`, `getWatchedPagesDueForCheck`
 
-#### `getSnapshotCount() → Promise<number>`
-Get total number of snapshots.
+### Collections
 
-#### `getAllDomains() → Promise<Array<{domain, count}>>`
-Get all unique domains with snapshot counts, sorted by count descending.
+`saveCollection`, `getCollection`, `getAllCollections`, `deleteCollection`
 
-### Snapshot Data Operations
+### Auto-Tag Rules
 
-#### `saveSnapshotData(data) → Promise<void>`
-Save snapshot data (compressed HTML + optional deep bundle + text content).
-- **data** `{Object}` - Must include `id`, `domSnapshot` (Blob), `textContent` (string)
+`getAutoTagRules`, `saveAutoTagRules`
 
-#### `getSnapshotData(id) → Promise<Object|undefined>`
-Get snapshot data by ID.
-- **id** `{string}` - Snapshot UUID
+### Sessions
 
-### Settings Operations
+`saveSession`, `getSession`, `getAllSessions`, `deleteSession`
 
-#### `getSetting(key) → Promise<any>`
-Get a single setting value. Falls back to `DEFAULT_SETTINGS[key]` if not saved.
-- **key** `{string}` - Setting name
+### Storage
 
-#### `getAllSettings() → Promise<Object>`
-Get all settings merged with defaults. Saved values override defaults.
+`getStorageUsage`, `getSnapshotsBySize`, `getOldestSnapshots`
 
-#### `saveSetting(key, value) → Promise<void>`
-Save a single setting.
-- **key** `{string}` - Setting name
-- **value** `{any}` - Setting value
+---
 
-#### `saveSettings(settingsObj) → Promise<void>`
-Save multiple settings in a single transaction.
-- **settingsObj** `{Object}` - Key-value pairs to save
+## lib/i18n.js
 
-### Storage Operations
-
-#### `getStorageUsage() → Promise<{totalSize, count}>`
-Calculate total storage usage by summing `snapshotSize` across all snapshots.
-
-#### `getSnapshotsBySize() → Promise<Object[]>`
-Get all snapshots sorted by size (largest first). Used for cleanup decisions.
-
-#### `getOldestSnapshots(limit?) → Promise<Object[]>`
-Get oldest non-starred snapshots for cleanup.
-- **limit** `{number}` - Maximum to return (default: 10)
-
-### Navigation Flow Operations
-
-#### `getSnapshotsBySessionId(sessionId) → Promise<Object[]>`
-Get all snapshots in a navigation session, sorted by timestamp ascending.
-- **sessionId** `{string}` - Session UUID
-
-#### `getNavigationFlows() → Promise<Array<Flow>>`
-Get all navigation flows (sessions with 2+ snapshots).
-
-Returns:
-```javascript
-{
-  sessionId: string,
-  snapshots: Object[],
-  startTime: number,
-  endTime: number,
-  pageCount: number,
-}
-```
-
-### Full-Text Search Operations
-
-#### `searchContentForIds(query) → Promise<string[]>`
-Search page text content for a query string. Returns matching snapshot IDs. Uses cursor iteration to avoid loading all data into memory.
-- **query** `{string}` - Search query (case-insensitive)
-
-#### `searchSnapshotsFullText(query) → Promise<Object[]>`
-Combined metadata + content search. Runs both in parallel, merges results.
-- **query** `{string}` - Search query
-
-### Watched Pages Operations
-
-#### `saveWatchedPage(entry) → Promise<void>`
-Create or update a watched page entry.
-
-#### `getWatchedPage(id) → Promise<Object|undefined>`
-Get a watched page by ID.
-
-#### `getAllWatchedPages() → Promise<Object[]>`
-Get all watched pages, sorted by `createdAt` descending.
-
-#### `getActiveWatchedPages() → Promise<Object[]>`
-Get all watched pages where `isActive === true`.
-
-#### `getWatchedPageByUrl(url) → Promise<Object|null>`
-Get a watched page by URL (unique index).
-
-#### `updateWatchedPage(id, updates) → Promise<void>`
-Partial update of a watched page entry.
-
-#### `deleteWatchedPage(id) → Promise<void>`
-Delete a watched page by ID.
-
-#### `getWatchedPagesDueForCheck() → Promise<Object[]>`
-Get active pages where `lastChecked + intervalMinutes < now`.
+#### `initI18n() → Promise<void>` — Fetch language setting, set `currentLang`
+#### `t(key) → string` — Get translated string (English fallback)
+#### `getLang() → string` — Returns `'en'` or `'vi'`
+#### `applyI18n(root?) → void` — Translate `data-i18n`, `data-i18n-placeholder`, `data-i18n-title`
 
 ---
 
 ## lib/utils.js
 
-Shared utility functions.
-
-#### `generateId() → string`
-Generate a UUID v4 using `crypto.randomUUID()` with fallback.
-
-#### `getDomain(url) → string`
-Extract hostname from URL. Returns empty string on invalid URLs.
-
-#### `formatBytes(bytes, decimals?) → string`
-Format bytes to human-readable string (e.g., `"1.5 MB"`).
-- **decimals** `{number}` - Decimal places (default: 1)
-
-#### `timeAgo(timestamp) → string`
-Format timestamp to relative time (e.g., `"5m ago"`, `"2d ago"`, `"Jan 15"`).
-
-#### `formatDate(timestamp) → string`
-Format timestamp to full date string (e.g., `"Jan 15, 2026, 02:30 PM"`).
-
-#### `compressBlob(blob) → Promise<Blob>`
-Compress a Blob using gzip via `CompressionStream`. Falls back to uncompressed if API unavailable.
-
-#### `decompressBlob(blob) → Promise<Blob>`
-Decompress a gzip Blob using `DecompressionStream`.
-
-#### `compressString(str) → Promise<Blob>`
-Compress a string to a gzip Blob. Wraps string in a text/html Blob first.
-
-#### `decompressToString(blob) → Promise<string>`
-Decompress a gzip Blob to a string.
-
-#### `debounce(fn, ms) → Function`
-Standard debounce. Returns a debounced version of `fn`.
-
-#### `throttle(fn, ms) → Function`
-Standard throttle. Returns a throttled version of `fn`.
-
-#### `truncate(str, maxLen?) → string`
-Truncate string with ellipsis. Default `maxLen`: 60.
-
-#### `escapeHtml(str) → string`
-Escape HTML special characters using DOM text content trick.
-
-#### `shouldExcludeUrl(url, settings) → boolean`
-Check if a URL should be excluded from capture based on protocol and domain exclusion lists in settings.
-
-#### `createThumbnail(dataUrl, maxWidth?, maxHeight?, quality?) → Promise<Blob>`
-Create a JPEG thumbnail Blob from an image data URL. Uses Canvas API (only works in page contexts, not service worker).
-- **maxWidth** `{number}` - Default: 320
-- **maxHeight** `{number}` - Default: 200
-- **quality** `{number}` - Default: 0.6
+UUID generation, date formatting, file size formatting, gzip compress/decompress, thumbnail creation.
 
 ---
 
 ## lib/theme.js
 
-Dark/light mode system.
+#### `initTheme()` → `{toggle, getTheme}`
+#### `createThemeToggle(container)` → `HTMLButtonElement`
 
-#### `initTheme() → {toggle, getTheme}`
-Initialize the theme system:
-1. Load from `localStorage('recall-theme')`
-2. Fall back to `prefers-color-scheme` media query
-3. Apply `data-theme` attribute to `<html>`
-4. Set up system preference listener (if no explicit preference)
+---
 
-Returns an object with:
-- **toggle** `() → string` - Toggle theme, returns new theme name
-- **getTheme** `() → string` - Returns current theme (`'dark'` or `'light'`)
+## lib/dialog.js
 
-#### `createThemeToggle(container) → HTMLButtonElement`
-Create and inject a theme toggle button into a container element.
-- **container** `{HTMLElement}` - Parent element to append button to
+#### `showConfirm(options) → Promise<boolean>`
+#### `showAlert(options) → Promise<void>`
 
 ---
 
 ## lib/storage-manager.js
 
-### Class: `StorageManager`
+### Class: `StorageManager` (singleton: `storageManager`)
 
-Manages storage quota, auto-cleanup, and usage statistics. Exported as a singleton `storageManager`.
+`getSettings()`, `invalidateCache()`, `getUsageStats()`, `hasRoom()`, `autoCleanup()`, `timeBasedCleanup()`, `checkAndCleanup()`
 
-#### `getSettings() → Promise<Object>`
-Get settings (cached). Use `invalidateCache()` after settings change.
+---
 
-#### `invalidateCache() → void`
-Clear the settings cache. Must be called after `db.saveSettings()`.
+## lib/zip.js
 
-#### `getUsageStats() → Promise<UsageStats>`
-Get current storage usage statistics.
-
-Returns:
-```javascript
-{
-  totalSize: number,           // Total bytes used
-  totalSizeFormatted: string,  // e.g., "150.5 MB"
-  count: number,               // Number of snapshots
-  maxBytes: number,            // Quota in bytes
-  maxFormatted: string,        // e.g., "2 GB"
-  usagePercent: number,        // e.g., 75.3
-  isWarning: boolean,          // >= 80%
-  isCritical: boolean,         // >= 90%
-  isFull: boolean,             // >= 100%
-}
-```
-
-#### `hasRoom(estimatedSize?) → Promise<boolean>`
-Check if there's room for a new snapshot.
-- **estimatedSize** `{number}` - Estimated snapshot size in bytes (default: 0)
-
-#### `autoCleanup(targetFreeBytes?) → Promise<number>`
-Delete oldest non-starred snapshots to free space. Returns count deleted.
-- **targetFreeBytes** `{number}` - Minimum bytes to free (default: 0 = use threshold)
-
-#### `timeBasedCleanup() → Promise<number>`
-Delete auto-captured, non-starred snapshots older than `autoCleanupDays`. Returns count deleted.
-
-#### `checkAndCleanup() → Promise<{ok, message, cleaned}>`
-Check quota and run cleanup if needed. Called before every capture.
-
-Returns:
-```javascript
-{
-  ok: boolean,        // true if capture can proceed
-  message: string,    // Human-readable status (or null)
-  cleaned: number,    // Number of snapshots cleaned
-}
-```
+#### `createZip(files) → Blob` — Create ZIP from `{name, data}` array
 
 ---
 
 ## background/capture-manager.js
 
-### Functions
-
 #### `captureTab(tabId, captureType?, flowMeta?) → Promise<Object|null>`
-Main capture orchestration function. Coordinates DOM snapshot, screenshot, compression, and storage.
-- **tabId** `{number}` - Chrome tab ID
-- **captureType** `{string}` - `'auto'` or `'manual'` (default: `'auto'`)
-- **flowMeta** `{Object|null}` - `{sessionId, parentSnapshotId}` for flow tracking
-
-Returns snapshot metadata on success, `null` on skip/failure. Never throws (catches internally).
-
-#### `exportSnapshot(snapshotId) → Promise<{format, filename}>`
-Export a snapshot as MHTML (if original tab is open) or compressed HTML.
-- **snapshotId** `{string}` - Snapshot UUID
-
-Returns `{format: 'mhtml'|'html', filename: string}`.
 
 ---
 
 ## background/deep-capture.js
 
-### Functions
-
 #### `deepCaptureTab(tabId, flowMeta?) → Promise<Object>`
-Deep capture using Chrome DevTools Protocol.
-- **tabId** `{number}` - Chrome tab ID
-- **flowMeta** `{Object|null}` - `{sessionId, parentSnapshotId}` for flow tracking
-
-Returns snapshot metadata. Throws on failure (unlike `captureTab`).
-
-### Internal Functions
-
-- `sendCommand(tabId, method, params)` - Send CDP command via `chrome.debugger`
-- `attachDebugger(tabId)` - Attach debugger (CDP v1.3)
-- `detachDebugger(tabId)` - Detach debugger (ignores errors)
-- `buildViewableHtml(resources, pageUrl, title)` - Rebuild self-contained HTML from CDP resources
-- `base64ToBlob(base64, mimeType)` - Convert base64 string to Blob
-- `escapeRegExp(str)` - Escape string for use in RegExp
 
 ---
 
 ## background/watcher.js
 
-### Exported Functions
+`watchPage`, `unwatchPage`, `checkAllDuePages`, `checkWatchedPage`
 
-#### `watchPage(opts) → Promise<Object>`
-Start watching a URL for changes.
-- **opts.url** `{string}` - URL to watch (required)
-- **opts.title** `{string}` - Page title
-- **opts.intervalMinutes** `{number}` - Check interval (default: 60)
-- **opts.cssSelector** `{string}` - CSS selector to scope monitoring
-- **opts.notifyOnChange** `{boolean}` - Send Chrome notification (default: true)
+---
 
-Returns the created watch entry. If URL is already watched, returns existing or reactivates.
+## background/backup-exporter.js
 
-#### `unwatchPage(id) → Promise<{deleted: string}>`
-Stop watching and delete the entry.
-- **id** `{string}` - Watch entry UUID
-
-#### `checkAllDuePages() → Promise<{checked, changed}>`
-Check all pages that are due for checking. Sends notifications for changes.
-
-#### `checkWatchedPage(entry) → Promise<{changed, entry?, error?}>`
-Check a single watched page for changes.
-- **entry** `{Object}` - Watched page entry from IndexedDB
-
-### Internal Functions
-
-- `hashText(str)` - FNV-1a 32-bit hash
-- `extractTextFromHtml(html)` - Strip HTML tags, decode entities, normalize whitespace
-- `extractTextForSelector(html, selector)` - Extract text for a CSS selector (regex-based)
-- `fetchPage(url)` - Fetch page HTML with 30s timeout
+#### `exportBackup() → Promise<Blob>`
+#### `importBackup(file) → Promise<{imported, skipped}>`
 
 ---
 
 ## content/snapshot.js
 
-Content script for DOM capture. Runs as an IIFE with injection guard.
-
-### Internal Functions (not exported - content script IIFE)
-
 #### `captureDOM() → Promise<Object>`
-Main capture function. Returns:
-```javascript
-{
-  html: string,            // Full HTML with DOCTYPE
-  textContent: string,     // Plain text (max 50KB)
-  title: string,           // document.title
-  url: string,             // document.location.href
-  scrollY: number,         // window.scrollY
-  scrollX: number,         // window.scrollX
-  captureTime: number,     // Date.now()
-  captureElapsed: number,  // Capture duration in ms
-  htmlSize: number,        // html.length
-}
-```
+Returns `{ html, textContent, title, url, scrollY, scrollX, captureTime, captureElapsed, htmlSize }`
 
-#### DOM Processing Steps (in order):
-1. Clone `document.documentElement`
-2. Inline `<link rel="stylesheet">` as `<style>` (fetches CSS via fetch)
-3. Inline images as base64 data URIs
-4. Remove `<picture>` `srcset` attributes
-5. Capture `<canvas>` as static `<img>`
-6. Preserve form input values
-7. Inline background images (partial)
-8. Remove `<script>` tags
-9. Remove `on*` event handler attributes
-10. Remove `<noscript>` tags
-11. Add `<base href>` tag
-12. Add recall metadata `<meta>` tags
-13. Extract plain text via `document.body.innerText`
-14. Serialize as `<!DOCTYPE html>\n` + outerHTML
+---
 
-### Message Listener
+## content/spotlight.js
 
-Listens for `{type: 'CAPTURE_DOM'}` messages and responds with the capture result.
+Key functions: `open()`, `close()`, `onInput()`, `performSearch()`, `renderResults()`, `sendAiChat()`, `renderAiMessage()`
 
 ---
 
 ## Message Types Reference
 
-Complete reference for all message types used in `chrome.runtime.sendMessage()`.
-
-### Capture Messages
+### Capture
 
 | Type | Direction | Parameters | Response |
 |------|-----------|------------|----------|
-| `CAPTURE_PAGE` | UI → SW | `{tabId?}` | Snapshot metadata |
-| `CAPTURE_DOM` | SW → Content | - | `{html, textContent, ...}` |
-| `CAPTURE_DEEP` | UI → SW | `{tabId?}` | Snapshot metadata |
-| `CAPTURE_STATUS` | SW → UI | `{status, ...}` | - |
+| `CAPTURE_PAGE` | UI → SW | `{tabId?}` | Metadata |
+| `CAPTURE_DOM` | SW → Content | — | `{html, textContent, ...}` |
+| `CAPTURE_DEEP` | UI → SW | `{tabId?}` | Metadata |
+| `CAPTURE_CLIP` | UI → SW | `{tabId?, html, textContent}` | Metadata |
 
-### Snapshot CRUD Messages
+### CRUD
 
 | Type | Direction | Parameters | Response |
 |------|-----------|------------|----------|
-| `GET_SNAPSHOTS` | UI → SW | `{query?, domain?, offset?, limit?}` | Metadata[] |
-| `GET_SNAPSHOT` | UI → SW | `{id}` | Metadata |
+| `GET_SNAPSHOTS` | UI → SW | `{query?, domain?}` | `Metadata[]` |
+| `GET_SNAPSHOT` | UI → SW | `{id}` | `Metadata` |
 | `DELETE_SNAPSHOT` | UI → SW | `{id}` | `{deleted: id}` |
 | `DELETE_SNAPSHOTS` | UI → SW | `{ids}` | `{deleted: ids}` |
 | `UPDATE_SNAPSHOT_TAGS` | UI → SW | `{id, tags}` | `{updated}` |
 | `UPDATE_SNAPSHOT_NOTES` | UI → SW | `{id, notes}` | `{updated}` |
 | `UPDATE_SNAPSHOT_ANNOTATIONS` | UI → SW | `{id, annotations}` | `{updated}` |
 
-### Settings Messages
+### Settings
 
-| Type | Direction | Parameters | Response |
-|------|-----------|------------|----------|
-| `GET_SETTINGS` | UI → SW | - | Settings object |
-| `UPDATE_SETTINGS` | UI → SW | `{settings}` | `{updated}` |
-| `TOGGLE_AUTO_CAPTURE` | UI → SW | - | `{autoCapture: bool}` |
+| Type | Direction | Response |
+|------|-----------|----------|
+| `GET_SETTINGS` | UI → SW | Settings object |
+| `UPDATE_SETTINGS` | UI → SW | `{updated}` |
+| `TOGGLE_AUTO_CAPTURE` | UI → SW | `{autoCapture: bool}` |
 
-### Search Messages
+### Search
 
-| Type | Direction | Parameters | Response |
-|------|-----------|------------|----------|
-| `SEARCH_CONTENT` | UI → SW | `{query}` | Metadata[] |
-| `SPOTLIGHT_SEARCH` | UI → SW | `{query, limit?}` | Result[] with snippets |
-| `CHECK_URL_SNAPSHOTS` | Content → SW | `{url}` | `{snapshots, count}` |
+| Type | Direction | Response |
+|------|-----------|----------|
+| `SEARCH_CONTENT` | UI → SW | `Metadata[]` |
+| `SPOTLIGHT_SEARCH` | UI → SW | Results with snippets |
+| `CHECK_URL_SNAPSHOTS` | Content → SW | `{snapshots, count}` |
 
-### Navigation Messages
+### Read Later
 
-| Type | Direction | Parameters | Response |
-|------|-----------|------------|----------|
-| `OPEN_VIEWER` | UI → SW | `{id, query?}` | `{opened}` |
-| `OPEN_MANAGER` | UI → SW | - | `{opened}` |
-| `GET_NAVIGATION_FLOWS` | UI → SW | - | Flow[] |
-| `GET_FLOW_SNAPSHOTS` | UI → SW | `{sessionId}` | Metadata[] |
+| Type | Direction | Response |
+|------|-----------|----------|
+| `MARK_READ_LATER` | UI → SW | Metadata |
+| `MARK_AS_READ` | UI → SW | `{updated}` |
+| `GET_READ_LATER` | UI → SW | `Metadata[]` |
 
-### Storage Messages
+### Collections
 
-| Type | Direction | Parameters | Response |
-|------|-----------|------------|----------|
-| `GET_STORAGE_USAGE` | UI → SW | - | UsageStats |
-| `EXPORT_MHTML` | UI → SW | `{id}` | `{format, filename}` |
+| Type | Direction | Response |
+|------|-----------|----------|
+| `CREATE_COLLECTION` | UI → SW | Collection |
+| `UPDATE_COLLECTION` | UI → SW | `{updated}` |
+| `DELETE_COLLECTION` | UI → SW | `{deleted}` |
+| `GET_COLLECTIONS` | UI → SW | `Collection[]` |
+| `ADD_TO_COLLECTION` | UI → SW | `{updated}` |
+| `REMOVE_FROM_COLLECTION` | UI → SW | `{updated}` |
 
-### Watch Messages
+### AI
 
-| Type | Direction | Parameters | Response |
-|------|-----------|------------|----------|
-| `WATCH_PAGE` | UI → SW | `{url, title?, intervalMinutes?, cssSelector?, notifyOnChange?}` | Watch entry |
-| `UNWATCH_PAGE` | UI → SW | `{id}` | `{deleted: id}` |
-| `GET_WATCHED_PAGES` | UI → SW | - | WatchEntry[] |
-| `UPDATE_WATCH` | UI → SW | `{id, intervalMinutes?, isActive?, cssSelector?, notifyOnChange?}` | `{updated}` |
-| `CHECK_WATCHED_NOW` | UI → SW | `{id?}` | Check result |
+| Type | Direction | Response |
+|------|-----------|----------|
+| `GENERATE_SUMMARY` | UI → SW | Summary text |
+| `GET_SUMMARY` | UI → SW | Cached summary |
+| `FETCH_AI_MODELS` | UI → SW | Model list |
+| `SPOTLIGHT_AI_CHAT` | Content → SW | AI response |
 
-### Broadcast Events (SW → All Listeners)
+### Watch
+
+| Type | Direction | Response |
+|------|-----------|----------|
+| `WATCH_PAGE` | UI → SW | Watch entry |
+| `UNWATCH_PAGE` | UI → SW | `{deleted}` |
+| `GET_WATCHED_PAGES` | UI → SW | `WatchEntry[]` |
+| `CHECK_WATCHED_NOW` | UI → SW | Check result |
+
+### Sessions
+
+| Type | Direction | Response |
+|------|-----------|----------|
+| `SAVE_SESSION` | UI → SW | Session entry |
+| `GET_SESSIONS` | UI → SW | `Session[]` |
+| `DELETE_SESSION` | UI → SW | `{deleted}` |
+| `RESTORE_SESSION` | UI → SW | `{restored, tabCount}` |
+
+### Pin / Trash
+
+| Type | Direction | Response |
+|------|-----------|----------|
+| `PIN_SNAPSHOT` | UI → SW | `{updated}` |
+| `UNPIN_SNAPSHOT` | UI → SW | `{updated}` |
+| `GET_TRASH` | UI → SW | `Metadata[]` |
+| `RESTORE_SNAPSHOT` | UI → SW | `{restored}` |
+| `EMPTY_TRASH` | UI → SW | `{deleted: count}` |
+
+### Export / Backup
+
+| Type | Direction | Response |
+|------|-----------|----------|
+| `EXPORT_MHTML` | UI → SW | `{format, filename}` |
+| `EXPORT_STANDALONE_HTML` | UI → SW | HTML string |
+| `IMPORT_BACKUP` | UI → SW | `{imported, skipped}` |
+| `EXPORT_BACKUP` | UI → SW | ZIP Blob |
+| `SAVE_ALL_TABS` | UI → SW | `{saved: count}` |
+
+### Dashboard
+
+| Type | Direction | Response |
+|------|-----------|----------|
+| `GET_DASHBOARD_STATS` | UI → SW | Stats object |
+
+### Broadcast Events (SW → All)
 
 | Type | Data |
 |------|------|
 | `SNAPSHOT_SAVED` | `{snapshot: metadata}` |
 | `SNAPSHOT_DELETED` | `{id}` or `{ids}` |
-| `WATCHED_PAGE_CHANGED` | `{entry: watchEntry}` |
+| `WATCHED_PAGE_CHANGED` | `{entry}` |
 
-### Content Script Messages
-
-| Type | Direction | Parameters |
-|------|-----------|------------|
-| `TOGGLE_SPOTLIGHT` | SW → Content | - |
-
-**Legend:**
-- **SW** = Service Worker (background)
-- **UI** = Extension pages (popup, sidepanel, manager, viewer, diff, settings)
-- **Content** = Content scripts (snapshot.js, spotlight.js, you-were-here.js)
+**Legend:** SW = Service Worker, UI = Extension pages, Content = Content scripts

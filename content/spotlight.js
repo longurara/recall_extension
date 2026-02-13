@@ -17,6 +17,55 @@
   let searchTimeout = null;
   let currentQuery = '';
 
+  // AI Chat state
+  let isAiMode = false;
+  let aiChatHistory = [];
+  let isAiLoading = false;
+
+  // i18n
+  let currentLang = 'en';
+  const STRINGS = {
+    en: {
+      searchPlaceholder: 'Search your saved snapshots...',
+      aiPlaceholder: 'Ask AI about this page or your snapshots...',
+      searchTitle: 'Search your Recall snapshots',
+      searchSub: 'Type to search by title, URL, domain, or page content',
+      aiHint: 'Type <kbd>/ai</kbd> to chat with AI about this page',
+      noResults: 'No results found',
+      noResultsSub: 'Try a different search term',
+      navigate: 'navigate',
+      open: 'open',
+      close: 'close',
+      aiTitle: 'Ask AI anything',
+      aiSub: 'Ask about the current page or your saved snapshots',
+      aiSummarize: '📝 Summarize',
+      aiKeyPoints: '🔑 Key points',
+      aiRelated: '🔗 Related snapshots',
+      aiRefLabel: '📎 Referenced snapshots',
+      searching: 'Searching...',
+    },
+    vi: {
+      searchPlaceholder: 'Tìm kiếm snapshot đã lưu...',
+      aiPlaceholder: 'Hỏi AI về trang này hoặc snapshot đã lưu...',
+      searchTitle: 'Tìm kiếm Recall snapshots',
+      searchSub: 'Nhập để tìm theo tiêu đề, URL, tên miền hoặc nội dung',
+      aiHint: 'Gõ <kbd>/ai</kbd> để trò chuyện với AI về trang này',
+      noResults: 'Không tìm thấy kết quả',
+      noResultsSub: 'Thử từ khóa khác',
+      navigate: 'di chuyển',
+      open: 'mở',
+      close: 'đóng',
+      aiTitle: 'Hỏi AI bất kỳ điều gì',
+      aiSub: 'Hỏi về trang hiện tại hoặc các snapshot đã lưu',
+      aiSummarize: '📝 Tóm tắt trang',
+      aiKeyPoints: '🔑 Ý chính',
+      aiRelated: '🔗 Snapshot liên quan',
+      aiRefLabel: '📎 Snapshot được tham chiếu',
+      searching: 'Đang tìm kiếm...',
+    },
+  };
+  function t(key) { return (STRINGS[currentLang] || STRINGS.en)[key] || STRINGS.en[key] || key; }
+
   // ============================================================
   // Build DOM (injected into page via Shadow DOM for style isolation)
   // ============================================================
@@ -36,20 +85,16 @@
               <path d="M13 13l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
             </svg>
             <input type="text" id="spotlight-input"
-              placeholder="Search your saved snapshots..."
-              autocomplete="off" spellcheck="false" />
+              placeholder="" autocomplete="off" spellcheck="false" />
             <kbd class="spotlight-kbd">ESC</kbd>
           </div>
           <div class="spotlight-results" id="spotlight-results">
-            <div class="spotlight-empty" id="spotlight-empty">
-              <p class="spotlight-empty-title">Search your Recall snapshots</p>
-              <p class="spotlight-empty-sub">Type to search by title, URL, domain, or page content</p>
-            </div>
+            <div class="spotlight-empty" id="spotlight-empty"></div>
           </div>
-          <div class="spotlight-footer">
-            <span><kbd>↑↓</kbd> navigate</span>
-            <span><kbd>Enter</kbd> open</span>
-            <span><kbd>ESC</kbd> close</span>
+          <div class="spotlight-footer" id="spotlight-footer">
+            <span><kbd>↑↓</kbd> <span class="footer-navigate"></span></span>
+            <span><kbd>Enter</kbd> <span class="footer-open"></span></span>
+            <span><kbd>ESC</kbd> <span class="footer-close"></span></span>
           </div>
         </div>
       </div>
@@ -60,6 +105,7 @@
       shadow,
       backdrop: shadow.getElementById('backdrop'),
       container: shadow.getElementById('container'),
+      footer: shadow.getElementById('spotlight-footer'),
       input: shadow.getElementById('spotlight-input'),
       resultsList: shadow.getElementById('spotlight-results'),
       emptyState: shadow.getElementById('spotlight-empty'),
@@ -85,7 +131,7 @@
   // Open / Close
   // ============================================================
 
-  function open() {
+  async function open() {
     if (isOpen) return;
 
     if (!overlay) createOverlay();
@@ -94,11 +140,27 @@
     overlay.host.style.display = 'block';
     overlay.backdrop.classList.add('visible');
 
+    // Fetch language setting
+    try {
+      const resp = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+      if (resp && resp.success && resp.data && resp.data.language) {
+        currentLang = resp.data.language;
+      } else if (resp && resp.language) {
+        currentLang = resp.language;
+      }
+    } catch { /* keep default */ }
+
     // Reset state
     overlay.input.value = '';
     currentQuery = '';
     results = [];
     selectedIndex = 0;
+    isAiMode = false;
+    aiChatHistory = [];
+    isAiLoading = false;
+    overlay.container.classList.remove('ai-mode');
+    overlay.input.placeholder = t('searchPlaceholder');
+    updateFooterText();
     renderEmpty();
 
     requestAnimationFrame(() => {
@@ -128,19 +190,40 @@
   // ============================================================
 
   function onInput() {
-    const query = overlay.input.value.trim();
+    const raw = overlay.input.value;
+    const query = raw.trim();
 
     if (searchTimeout) clearTimeout(searchTimeout);
 
-    if (!query) {
+    // Detect @ai prefix
+    const aiMatch = query.match(/^\/ai\s*(.*)/i);
+    const wasAiMode = isAiMode;
+    isAiMode = !!aiMatch;
+
+    if (isAiMode !== wasAiMode) {
+      overlay.container.classList.toggle('ai-mode', isAiMode);
+      if (isAiMode) {
+        overlay.input.placeholder = t('aiPlaceholder');
+        if (!aiMatch[1]) renderAiEmpty();
+      } else {
+        overlay.input.placeholder = t('searchPlaceholder');
+        aiChatHistory = [];
+      }
+    }
+
+    if (!query || (isAiMode && !aiMatch[1])) {
       currentQuery = '';
       results = [];
       selectedIndex = 0;
-      renderEmpty();
+      if (isAiMode) renderAiEmpty();
+      else renderEmpty();
       return;
     }
 
-    // Debounce: 250ms
+    // In AI mode, don't auto-search — user must press Enter
+    if (isAiMode) return;
+
+    // Normal search: debounce 250ms
     searchTimeout = setTimeout(() => {
       performSearch(query);
     }, 250);
@@ -153,7 +236,7 @@
     overlay.resultsList.innerHTML = `
       <div class="spotlight-loading">
         <div class="spotlight-spinner"></div>
-        <span>Searching...</span>
+        <span>${t('searching')}</span>
       </div>
     `;
 
@@ -186,11 +269,25 @@
   // Render
   // ============================================================
 
+  function updateFooterText() {
+    if (!overlay || !overlay.footer) return;
+    const nav = overlay.footer.querySelector('.footer-navigate');
+    const opn = overlay.footer.querySelector('.footer-open');
+    const cls = overlay.footer.querySelector('.footer-close');
+    if (nav) nav.textContent = t('navigate');
+    if (opn) opn.textContent = t('open');
+    if (cls) cls.textContent = t('close');
+  }
+
   function renderEmpty() {
     overlay.resultsList.innerHTML = `
       <div class="spotlight-empty">
-        <p class="spotlight-empty-title">Search your Recall snapshots</p>
-        <p class="spotlight-empty-sub">Type to search by title, URL, domain, or page content</p>
+        <p class="spotlight-empty-title">${t('searchTitle')}</p>
+        <p class="spotlight-empty-sub">${t('searchSub')}</p>
+        <div class="spotlight-ai-hint">
+          <span class="ai-hint-icon">✨</span>
+          <span>${t('aiHint')}</span>
+        </div>
       </div>
     `;
   }
@@ -198,8 +295,8 @@
   function renderNoResults() {
     overlay.resultsList.innerHTML = `
       <div class="spotlight-empty">
-        <p class="spotlight-empty-title">No results found</p>
-        <p class="spotlight-empty-sub">Try a different search term</p>
+        <p class="spotlight-empty-title">${t('noResults')}</p>
+        <p class="spotlight-empty-sub">${t('noResultsSub')}</p>
       </div>
     `;
   }
@@ -230,8 +327,8 @@
         const matchBadge = r.matchType === 'content'
           ? '<span class="result-match-badge content">Content match</span>'
           : r.matchType === 'both'
-          ? '<span class="result-match-badge both">Title + Content</span>'
-          : '';
+            ? '<span class="result-match-badge both">Title + Content</span>'
+            : '';
 
         const starHtml = r.isStarred ? '<span class="result-star">&#9733;</span>' : '';
 
@@ -299,9 +396,6 @@
   function openResult(result) {
     if (!result) return;
 
-    // Use message to service worker to open the viewer tab.
-    // Content scripts cannot open chrome-extension:// URLs via window.open()
-    // (Chrome blocks it with ERR_BLOCKED_BY_CLIENT).
     chrome.runtime.sendMessage({
       type: 'OPEN_VIEWER',
       id: result.id,
@@ -309,6 +403,162 @@
     });
 
     close();
+  }
+
+  // ============================================================
+  // AI Chat
+  // ============================================================
+
+  function renderAiEmpty() {
+    const suggestions = [
+      { q: currentLang === 'vi' ? 'Tóm tắt trang này' : 'Summarize this page', label: t('aiSummarize') },
+      { q: currentLang === 'vi' ? 'Ý chính của trang?' : 'What are the key points?', label: t('aiKeyPoints') },
+      { q: currentLang === 'vi' ? 'Tìm trang liên quan trong snapshot' : 'Find related pages in my snapshots', label: t('aiRelated') },
+    ];
+    overlay.resultsList.innerHTML = `
+      <div class="ai-empty">
+        <div class="ai-empty-icon">✨</div>
+        <p class="ai-empty-title">${t('aiTitle')}</p>
+        <p class="ai-empty-sub">${t('aiSub')}</p>
+        <div class="ai-suggestions">
+          ${suggestions.map(s => `<button class="ai-suggestion" data-q="${s.q}">${s.label}</button>`).join('')}
+        </div>
+      </div>
+    `;
+    // Suggestion click handlers
+    overlay.resultsList.querySelectorAll('.ai-suggestion').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const q = btn.dataset.q;
+        overlay.input.value = '/ai ' + q;
+        sendAiMessage(q);
+      });
+    });
+  }
+
+  function renderAiLoading() {
+    // Append loading indicator
+    const loadingEl = document.createElement('div');
+    loadingEl.className = 'ai-message ai-message-assistant ai-loading-msg';
+    loadingEl.innerHTML = `
+      <div class="ai-avatar">✨</div>
+      <div class="ai-bubble">
+        <div class="ai-typing">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+    `;
+    overlay.resultsList.appendChild(loadingEl);
+    loadingEl.scrollIntoView({ block: 'end', behavior: 'smooth' });
+  }
+
+  function renderAiMessage(role, content) {
+    const msgEl = document.createElement('div');
+    msgEl.className = `ai-message ai-message-${role}`;
+
+    if (role === 'user') {
+      msgEl.innerHTML = `
+        <div class="ai-bubble">${escapeHtml(content)}</div>
+        <div class="ai-avatar">👤</div>
+      `;
+    } else {
+      // Simple markdown-like formatting for AI responses
+      let formatted = escapeHtml(content)
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/`(.+?)`/g, '<code>$1</code>')
+        .replace(/^[-•]\s(.+)/gm, '<li>$1</li>')
+        .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
+        .replace(/\n/g, '<br>');
+
+      msgEl.innerHTML = `
+        <div class="ai-avatar">✨</div>
+        <div class="ai-bubble">${formatted}</div>
+      `;
+    }
+
+    overlay.resultsList.appendChild(msgEl);
+    msgEl.scrollIntoView({ block: 'end', behavior: 'smooth' });
+  }
+
+  function renderAiSnapshots(snapshots) {
+    if (!snapshots || snapshots.length === 0) return;
+    const el = document.createElement('div');
+    el.className = 'ai-related-snapshots';
+    el.innerHTML = `
+      <div class="ai-related-label">${t('aiRefLabel')}</div>
+      ${snapshots.map(s => `
+        <div class="ai-related-item" data-id="${s.id}">
+          <span class="ai-related-title">${escapeHtml(s.title)}</span>
+          <span class="ai-related-domain">${escapeHtml(s.domain)}</span>
+        </div>
+      `).join('')}
+    `;
+    overlay.resultsList.appendChild(el);
+
+    el.querySelectorAll('.ai-related-item').forEach(item => {
+      item.addEventListener('click', () => {
+        chrome.runtime.sendMessage({ type: 'OPEN_VIEWER', id: item.dataset.id });
+        close();
+      });
+    });
+  }
+
+  async function sendAiMessage(question) {
+    if (isAiLoading || !question.trim()) return;
+    isAiLoading = true;
+
+    // If first message, clear the empty state and show chat
+    if (aiChatHistory.length === 0) {
+      overlay.resultsList.innerHTML = '';
+    }
+
+    // Render user message
+    renderAiMessage('user', question);
+    aiChatHistory.push({ role: 'user', content: question });
+
+    // Show loading
+    renderAiLoading();
+
+    try {
+      // Extract current page text
+      let pageText = '';
+      let pageUrl = window.location.href;
+      let pageTitle = document.title;
+      try {
+        pageText = (document.body.innerText || '').substring(0, 8000);
+      } catch { /* cross-origin or restricted */ }
+
+      const response = await chrome.runtime.sendMessage({
+        type: 'SPOTLIGHT_AI_CHAT',
+        question,
+        pageText,
+        pageUrl,
+        pageTitle,
+        chatHistory: aiChatHistory.slice(0, -1), // exclude current question (already added)
+      });
+
+      // Remove loading indicator
+      const loadingMsg = overlay.resultsList.querySelector('.ai-loading-msg');
+      if (loadingMsg) loadingMsg.remove();
+
+      if (response && response.success && response.data) {
+        const { answer, relatedSnapshots } = response.data;
+        renderAiMessage('assistant', answer);
+        aiChatHistory.push({ role: 'assistant', content: answer });
+        renderAiSnapshots(relatedSnapshots);
+      } else {
+        const errMsg = response?.error || 'Failed to get AI response';
+        renderAiMessage('assistant', `⚠️ Error: ${errMsg}`);
+      }
+    } catch (err) {
+      // Remove loading indicator
+      const loadingMsg = overlay.resultsList.querySelector('.ai-loading-msg');
+      if (loadingMsg) loadingMsg.remove();
+
+      renderAiMessage('assistant', `⚠️ Error: ${err.message}`);
+    } finally {
+      isAiLoading = false;
+    }
   }
 
   // ============================================================
@@ -337,7 +587,13 @@
 
       case 'Enter':
         e.preventDefault();
-        if (results.length > 0 && results[selectedIndex]) {
+        if (isAiMode) {
+          const aiQ = overlay.input.value.trim().replace(/^\/ai\s*/i, '');
+          if (aiQ) {
+            overlay.input.value = '/ai ';
+            sendAiMessage(aiQ);
+          }
+        } else if (results.length > 0 && results[selectedIndex]) {
           openResult(results[selectedIndex]);
         }
         break;
@@ -560,6 +816,40 @@
       .spotlight-empty-sub {
         font-size: 12px;
         color: #9ca3af;
+      }
+
+      .spotlight-ai-hint {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 12px;
+        padding: 8px 14px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.08));
+        border: 1px solid rgba(124,58,237,0.15);
+        font-size: 12px;
+        color: #6d28d9;
+        cursor: default;
+        transition: all 0.2s;
+      }
+
+      .spotlight-ai-hint:hover {
+        background: linear-gradient(135deg, rgba(99,102,241,0.14), rgba(168,85,247,0.14));
+        border-color: rgba(124,58,237,0.3);
+      }
+
+      .ai-hint-icon {
+        font-size: 14px;
+      }
+
+      .spotlight-ai-hint kbd {
+        background: rgba(124,58,237,0.15);
+        border: 1px solid rgba(124,58,237,0.25);
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-family: inherit;
+        font-weight: 600;
+        color: #7c3aed;
       }
 
       /* Loading */
@@ -816,6 +1106,18 @@
           color: #64748b;
         }
 
+        .spotlight-ai-hint {
+          background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(168,85,247,0.12));
+          border-color: rgba(124,58,237,0.25);
+          color: #c4b5fd;
+        }
+
+        .spotlight-ai-hint kbd {
+          background: rgba(124,58,237,0.25);
+          border-color: rgba(124,58,237,0.35);
+          color: #a78bfa;
+        }
+
         .spotlight-loading {
           color: #94a3b8;
         }
@@ -864,6 +1166,257 @@
           border-top-color: #334155;
           color: #64748b;
         }
+
+        /* AI Dark mode overrides */
+        .ai-mode .spotlight-input-row {
+          border-bottom-color: #4c1d95;
+        }
+
+        .ai-empty-title { color: #c4b5fd !important; }
+        .ai-empty-sub { color: #7c6fad !important; }
+
+        .ai-message-user .ai-bubble {
+          background: #5b21b6 !important;
+          color: #ede9fe !important;
+        }
+
+        .ai-message-assistant .ai-bubble {
+          background: #293548 !important;
+          color: #e2e8f0 !important;
+        }
+
+        .ai-message-assistant .ai-bubble code {
+          background: rgba(255,255,255,0.1) !important;
+        }
+
+        .ai-related-snapshots {
+          border-top-color: #334155 !important;
+        }
+
+        .ai-related-item {
+          background: #293548 !important;
+        }
+
+        .ai-related-item:hover {
+          background: #334155 !important;
+        }
+
+        .ai-related-title { color: #e2e8f0 !important; }
+        .ai-related-domain { color: #64748b !important; }
+
+        .ai-suggestion {
+          background: #293548 !important;
+          color: #c4b5fd !important;
+          border-color: #4c1d95 !important;
+        }
+
+        .ai-suggestion:hover {
+          background: #334155 !important;
+        }
+      }
+
+      /* ============================================================
+         AI Chat Styles
+         ============================================================ */
+
+      .ai-mode .spotlight-input-row {
+        border-bottom: 2px solid #7c3aed;
+      }
+
+      .ai-mode .spotlight-icon {
+        color: #7c3aed;
+      }
+
+      /* AI Empty state */
+      .ai-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 20px 16px;
+        gap: 6px;
+      }
+
+      .ai-empty-icon {
+        font-size: 28px;
+        margin-bottom: 4px;
+      }
+
+      .ai-empty-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: #6d28d9;
+      }
+
+      .ai-empty-sub {
+        font-size: 12px;
+        color: #9ca3af;
+        margin-bottom: 8px;
+      }
+
+      .ai-suggestions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        justify-content: center;
+      }
+
+      .ai-suggestion {
+        font-size: 12px;
+        padding: 6px 12px;
+        border-radius: 20px;
+        border: 1px solid #e5e7eb;
+        background: #f9fafb;
+        color: #6d28d9;
+        cursor: pointer;
+        transition: all 0.15s;
+        font-family: inherit;
+      }
+
+      .ai-suggestion:hover {
+        background: #ede9fe;
+        border-color: #c4b5fd;
+      }
+
+      /* Chat messages */
+      .ai-message {
+        display: flex;
+        gap: 8px;
+        padding: 8px 16px;
+        align-items: flex-start;
+        animation: aiFadeIn 0.2s ease;
+      }
+
+      @keyframes aiFadeIn {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .ai-message-user {
+        justify-content: flex-end;
+      }
+
+      .ai-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        flex-shrink: 0;
+        background: #f3f4f6;
+      }
+
+      .ai-bubble {
+        max-width: 80%;
+        padding: 10px 14px;
+        border-radius: 14px;
+        font-size: 13px;
+        line-height: 1.6;
+        word-wrap: break-word;
+      }
+
+      .ai-message-user .ai-bubble {
+        background: #7c3aed;
+        color: #fff;
+        border-bottom-right-radius: 4px;
+      }
+
+      .ai-message-assistant .ai-bubble {
+        background: #f3f4f6;
+        color: #1f2937;
+        border-bottom-left-radius: 4px;
+      }
+
+      .ai-message-assistant .ai-bubble strong {
+        font-weight: 600;
+      }
+
+      .ai-message-assistant .ai-bubble code {
+        background: rgba(0,0,0,0.06);
+        padding: 1px 5px;
+        border-radius: 3px;
+        font-size: 12px;
+        font-family: 'SF Mono', Monaco, Consolas, monospace;
+      }
+
+      .ai-message-assistant .ai-bubble ul {
+        margin: 4px 0;
+        padding-left: 16px;
+      }
+
+      .ai-message-assistant .ai-bubble li {
+        margin: 2px 0;
+      }
+
+      /* Typing indicator */
+      .ai-typing {
+        display: flex;
+        gap: 4px;
+        padding: 4px 0;
+      }
+
+      .ai-typing span {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #9ca3af;
+        animation: aiTypingDot 1.2s ease-in-out infinite;
+      }
+
+      .ai-typing span:nth-child(2) { animation-delay: 0.2s; }
+      .ai-typing span:nth-child(3) { animation-delay: 0.4s; }
+
+      @keyframes aiTypingDot {
+        0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+        30% { transform: translateY(-6px); opacity: 1; }
+      }
+
+      /* Related snapshots */
+      .ai-related-snapshots {
+        margin: 4px 16px 8px;
+        padding-top: 8px;
+        border-top: 1px solid #e5e7eb;
+      }
+
+      .ai-related-label {
+        font-size: 11px;
+        color: #9ca3af;
+        margin-bottom: 6px;
+        font-weight: 500;
+      }
+
+      .ai-related-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.1s;
+        background: #f9fafb;
+        margin-bottom: 4px;
+      }
+
+      .ai-related-item:hover {
+        background: #ede9fe;
+      }
+
+      .ai-related-title {
+        font-size: 12px;
+        color: #1f2937;
+        font-weight: 500;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+      }
+
+      .ai-related-domain {
+        font-size: 11px;
+        color: #9ca3af;
+        flex-shrink: 0;
+        margin-left: 8px;
       }
     `;
   }

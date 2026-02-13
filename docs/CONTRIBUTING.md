@@ -1,4 +1,362 @@
-# Contributing Guide
+# Hướng dẫn đóng góp / Contributing Guide
+
+> **[🇻🇳 Tiếng Việt](#tiếng-việt)** | **[🇬🇧 English](#english)**
+
+---
+
+# 🇻🇳 Tiếng Việt
+
+Hướng dẫn cho các nhà phát triển muốn làm việc trên mã nguồn tiện ích Recall.
+
+---
+
+## Mục lục
+
+- [Thiết lập phát triển](#thiết-lập-phát-triển)
+- [Kiến trúc dự án](#kiến-trúc-dự-án-vi)
+- [Quy trình phát triển](#quy-trình-phát-triển)
+- [Quy ước mã nguồn](#quy-ước-mã-nguồn)
+- [Thêm tính năng mới](#thêm-tính-năng-mới)
+- [Thêm loại tin nhắn mới](#thêm-loại-tin-nhắn-mới)
+- [Thêm database store mới](#thêm-database-store-mới)
+- [Thêm trang UI mới](#thêm-trang-ui-mới)
+- [Thêm bản dịch (i18n)](#thêm-bản-dịch-i18n)
+- [Gỡ lỗi](#gỡ-lỗi-vi)
+- [Kiểm thử](#kiểm-thử-vi)
+- [Lỗi thường gặp](#lỗi-thường-gặp)
+- [Tham chiếu kích thước file](#tham-chiếu-kích-thước-file)
+
+---
+
+## Thiết lập phát triển
+
+### Yêu cầu
+
+- **Google Chrome** 116 trở lên
+- **Trình soạn mã** có hỗ trợ JavaScript (khuyến nghị VS Code)
+- **Không cần build tools** — JS thuần với ES Modules
+
+### Tải tiện ích
+
+1. Mở Chrome → `chrome://extensions/`
+2. Bật **Developer mode**
+3. Nhấn **Load unpacked** → chọn thư mục `Extension_recall`
+
+### Tải lại sau khi thay đổi
+
+| Thay đổi | Hành động |
+|----------|-----------|
+| Service worker | Nhấn nút refresh trên thẻ extension tại `chrome://extensions/` |
+| Content scripts | Tải lại extension VÀ refresh trang web |
+| Trang extension | Chỉ cần refresh trang |
+| Manifest | Luôn tải lại extension |
+
+---
+
+## Kiến trúc dự án {#kiến-trúc-dự-án-vi}
+
+```
+lib/            → Module dùng chung (import ở mọi nơi)
+background/     → Service worker (xử lý tin nhắn, chụp, theo dõi, AI)
+content/        → Content scripts (inject vào trang web)
+popup/          → Popup thanh công cụ
+sidepanel/      → Chrome Side Panel
+manager/        → Quản lý snapshot toàn trang
+viewer/         → Xem snapshot
+diff/           → So sánh trang
+dashboard/      → Dashboard phân tích
+settings/       → Giao diện cài đặt
+```
+
+### Nguyên tắc chính
+
+1. **Kiến trúc message-passing**: Trang UI giao tiếp với service worker qua `chrome.runtime.sendMessage()`.
+2. **Hằng số dùng chung**: Tất cả loại tin nhắn, tên DB, cài đặt trong `lib/constants.js`.
+3. **Lớp database**: Mọi truy cập IndexedDB qua `lib/db.js`.
+4. **Không dependency ngoài**: Mọi thứ xây dựng từ đầu.
+5. **Cách ly content script**: Content scripts dùng IIFE và Shadow DOM.
+6. **i18n tập trung**: Mọi văn bản UI dùng `lib/i18n.js`.
+7. **Hộp thoại tùy chỉnh**: Dùng `lib/dialog.js` thay vì `window.confirm()` / `window.alert()`.
+
+---
+
+## Quy trình phát triển
+
+### Vị trí Console
+
+| Ngữ cảnh | Cách truy cập |
+|-----------|---------------|
+| Service worker | `chrome://extensions/` → "Inspect views: service worker" |
+| Content scripts | DevTools trang (F12) → Console (lọc theo extension) |
+| Popup | Chuột phải icon extension → "Inspect popup" |
+| Trang extension | Mở trang → F12 |
+
+---
+
+## Quy ước mã nguồn
+
+### JavaScript
+
+- ES Modules với `import`/`export`
+- Async/await thay vì Promise thuần
+- `const` mặc định, `let` khi cần, không dùng `var`
+- Template literals cho nội suy
+- Arrow functions cho callback
+- Tiền tố `console.log('[Recall] ...')` cho logging
+- Luôn dùng dấu chấm phẩy
+
+### Đặt tên
+
+| Loại | Quy ước | Ví dụ |
+|------|---------|-------|
+| Hằng số | UPPER_SNAKE_CASE | `DB_NAME`, `CAPTURE_AUTO` |
+| Hàm | camelCase | `captureTab`, `getSnapshot` |
+| Lớp | PascalCase | `StorageManager` |
+| File | kebab-case | `capture-manager.js` |
+| CSS class | kebab-case | `snapshot-card` |
+| Loại tin nhắn | UPPER_SNAKE_CASE | `CAPTURE_PAGE` |
+| Key i18n | kebab-case | `popup-capture`, `mgr-search` |
+
+---
+
+## Thêm tính năng mới
+
+### Từng bước
+
+#### 1. Định nghĩa loại tin nhắn
+```javascript
+// lib/constants.js
+export const MSG = {
+  MY_NEW_ACTION: 'MY_NEW_ACTION',
+};
+```
+
+#### 2. Thêm thao tác database (nếu cần)
+```javascript
+// lib/db.js
+export async function myNewDbOperation(params) {
+  return withStore(STORE_NAME, 'readonly', (store) => { /* ... */ });
+}
+```
+
+#### 3. Xử lý tin nhắn trong Service Worker
+```javascript
+// service-worker.js handleMessage()
+case MSG.MY_NEW_ACTION: {
+  const result = await someOperation(message.param);
+  return result;
+}
+```
+
+#### 4. Gửi từ UI
+```javascript
+const response = await chrome.runtime.sendMessage({
+  type: MSG.MY_NEW_ACTION,
+  param: 'value',
+});
+if (response.success) { const data = response.data; }
+```
+
+#### 5. Thêm bản dịch
+```javascript
+// lib/i18n.js
+const STRINGS = {
+  en: { 'my-feature-label': 'My Feature' },
+  vi: { 'my-feature-label': 'Tính năng của tôi' },
+};
+```
+
+#### 6. Cập nhật UI với i18n
+```html
+<span data-i18n="my-feature-label">My Feature</span>
+```
+
+---
+
+## Thêm loại tin nhắn mới
+
+1. **Định nghĩa** trong `lib/constants.js`
+2. **Xử lý** trong `service-worker.js`
+3. **Gửi** từ UI
+4. **Ghi tài liệu** trong `docs/API_REFERENCE.md`
+
+---
+
+## Thêm database store mới
+
+### 1. Tăng phiên bản
+```javascript
+export const DB_VERSION = 6; // Trước đó là 5
+export const STORE_MY_NEW_STORE = 'myNewStore';
+```
+
+### 2. Thêm migration
+```javascript
+// lib/db.js onupgradeneeded
+if (oldVersion < 6) {
+  const store = db.createObjectStore(STORE_MY_NEW_STORE, { keyPath: 'id' });
+}
+```
+
+### 3. Thêm hàm CRUD
+
+### Quan trọng
+- **Không bao giờ** sửa đổi schema store hiện có — luôn tăng version
+- Xử lý migration từ bất kỳ phiên bản trước nào
+- Kiểm thử cả cài mới VÀ nâng cấp từ phiên bản trước
+
+---
+
+## Thêm trang UI mới
+
+### 1. Tạo thư mục
+```
+mynewpage/
+├── mynewpage.html
+├── mynewpage.css
+└── mynewpage.js
+```
+
+### 2. Template JavaScript
+```javascript
+import { initTheme, createThemeToggle } from '../lib/theme.js';
+import { initI18n, t, applyI18n } from '../lib/i18n.js';
+
+const theme = initTheme();
+createThemeToggle(document.getElementById('header-actions'));
+
+async function init() {
+  await initI18n();
+  applyI18n();
+}
+init();
+```
+
+---
+
+## Thêm bản dịch (i18n)
+
+### Cho trang Extension (popup, manager, v.v.)
+
+1. Thêm key dịch vào `lib/i18n.js`:
+   ```javascript
+   const STRINGS = {
+     en: { 'mypage-title': 'My Page' },
+     vi: { 'mypage-title': 'Trang của tôi' },
+   };
+   ```
+
+2. Thêm `data-i18n` vào HTML:
+   ```html
+   <h1 data-i18n="mypage-title">My Page</h1>
+   ```
+
+3. Import và khởi tạo trong JS:
+   ```javascript
+   import { initI18n, t, applyI18n } from '../lib/i18n.js';
+   await initI18n();
+   applyI18n();
+   ```
+
+### Cho Content Scripts (spotlight, you-were-here)
+
+Content scripts không thể import ES modules. Thêm bản dịch vào từ điển `STRINGS` riêng:
+
+```javascript
+const STRINGS = {
+  en: { 'my-key': 'English' },
+  vi: { 'my-key': 'Tiếng Việt' },
+};
+```
+
+---
+
+## Gỡ lỗi {#gỡ-lỗi-vi}
+
+### Tình huống gỡ lỗi thường gặp
+
+**Chụp không hoạt động:**
+1. Kiểm tra console service worker
+2. Xác minh content script đã tải (`window.__recallSnapshotInjected`)
+3. Kiểm tra URL có bị loại trừ không
+
+**i18n không dịch:**
+1. Xác minh `initI18n()` gọi trước `applyI18n()`
+2. Kiểm tra thuộc tính `data-i18n` khớp key trong `STRINGS`
+3. Xác minh định dạng phản hồi: `resp.data.language` không phải `resp.language`
+
+---
+
+## Kiểm thử {#kiểm-thử-vi}
+
+### Checklist kiểm thử thủ công
+
+- [ ] Tự động chụp khi điều hướng
+- [ ] Chụp thủ công, Deep Capture, Đọc sau, Clipper
+- [ ] Spotlight Search + AI Chat
+- [ ] Manager: 4 chế độ xem, tìm kiếm, lọc, sắp xếp
+- [ ] Viewer: render, ghi chú, chú thích, AI summary
+- [ ] i18n: đổi ngôn ngữ → xác minh đổi text
+- [ ] Cài đặt: lưu, xuất/nhập sao lưu
+- [ ] Theme: dark/light, màu tùy chỉnh
+
+---
+
+## Lỗi thường gặp
+
+### 1. Tuần tự hóa Blob
+**Vấn đề**: Blob không gửi được qua `sendMessage()`.
+**Giải pháp**: Chuyển sang data URL string.
+
+### 2. Vòng đời Service Worker
+**Vấn đề**: Trạng thái in-memory mất khi SW terminate.
+**Giải pháp**: Dùng IndexedDB cho trạng thái bền vững.
+
+### 3. Inject Content Script trùng
+**Vấn đề**: Script inject nhiều lần sau reload.
+**Giải pháp**: Dùng guard (`window.__recallXxxInjected`).
+
+### 4. Định dạng phản hồi i18n
+**Vấn đề**: `initI18n()` nhận `{success, data: {language}}` không phải `{language}`.
+**Giải pháp**: Truy cập `resp.data.language`.
+
+### 5. textContent và SVG Icons
+**Vấn đề**: `btn.textContent = t('key')` xóa SVG icon trong nút.
+**Giải pháp**: Target phần tử `<span>` bên trong, không phải nút.
+
+### 6. i18n Content Script
+**Vấn đề**: Content scripts không import được ES modules.
+**Giải pháp**: Duy trì từ điển `STRINGS` riêng.
+
+### 7. Xung đột phiên bản IndexedDB
+**Vấn đề**: Nhiều ngữ cảnh có thể mở phiên bản DB khác nhau.
+**Giải pháp**: Xử lý `onversionchange` bằng đóng kết nối.
+
+### 8. sendResponse bất đồng bộ
+**Vấn đề**: Listener `onMessage` cần `return true` cho phản hồi async.
+**Giải pháp**: Luôn `return true`.
+
+---
+
+## Tham chiếu kích thước file
+
+| File | ~Dòng | Mục đích |
+|------|-------|----------|
+| `lib/constants.js` | 180 | Hằng số, 50+ MSG types |
+| `lib/db.js` | 900+ | Wrapper IndexedDB, 7 stores |
+| `lib/i18n.js` | 285 | Bản dịch i18n (en/vi) |
+| `lib/utils.js` | 225 | Tiện ích |
+| `background/service-worker.js` | 1400+ | Service worker chính |
+| `content/spotlight.js` | 1300+ | Spotlight + AI chat |
+| `content/progressive-capture.js` | 600+ | Chụp tiến trình |
+| `manager/manager.js` | 1600+ | UI Manager |
+| `viewer/viewer.js` | 1200+ | UI Viewer |
+| **Tổng** | **~10,000+** | |
+
+---
+---
+
+# 🇬🇧 English
 
 Guide for developers who want to work on the Recall extension codebase.
 
@@ -14,6 +372,7 @@ Guide for developers who want to work on the Recall extension codebase.
 - [Adding a New Message Type](#adding-a-new-message-type)
 - [Adding a New Database Store](#adding-a-new-database-store)
 - [Adding a New UI Page](#adding-a-new-ui-page)
+- [Adding Translations (i18n)](#adding-translations-i18n)
 - [Debugging](#debugging)
 - [Testing](#testing)
 - [Common Pitfalls](#common-pitfalls)
@@ -27,553 +386,155 @@ Guide for developers who want to work on the Recall extension codebase.
 
 - **Google Chrome** 116 or later
 - **Text editor** with JavaScript support (VS Code recommended)
-- **No build tools required** - the project uses vanilla JS with ES Modules
+- **No build tools required** — vanilla JS with ES Modules
 
 ### Loading the Extension
 
-1. Open Chrome and navigate to `chrome://extensions/`
-2. Enable **Developer mode** (toggle in top-right)
-3. Click **Load unpacked**
-4. Select the `Extension_recall` directory
-5. The extension is now loaded and active
+1. Open Chrome → `chrome://extensions/`
+2. Enable **Developer mode**
+3. Click **Load unpacked** → select `Extension_recall`
 
 ### Reloading After Changes
 
-- **Service worker changes**: Click the refresh icon on the extension card at `chrome://extensions/`
-- **Content script changes**: Reload the extension AND refresh the web page
-- **Extension page changes** (popup, manager, viewer, etc.): Just refresh the page
-- **Manifest changes**: Always reload the extension
-
-> **Tip**: You can also press `Ctrl+Shift+I` on any extension page to open DevTools for that context.
+| Changed | Action |
+|---------|--------|
+| Service worker | Refresh icon at `chrome://extensions/` |
+| Content scripts | Reload extension AND refresh page |
+| Extension pages | Just refresh the page |
+| Manifest | Always reload extension |
 
 ---
 
 ## Project Architecture
 
-The extension follows a clear separation of concerns:
-
-```
-lib/           → Shared modules (imported everywhere)
-background/    → Service worker (message handling, capture, watch)
-content/       → Content scripts (injected into web pages)
-popup/         → Toolbar popup UI
-sidepanel/     → Chrome side panel UI
-manager/       → Full-page snapshot management UI
-viewer/        → Snapshot rendering UI
-diff/          → Page comparison UI
-settings/      → Settings UI
-icons/         → Extension icons
-```
-
 ### Key Principles
 
-1. **Message-passing architecture**: UI pages communicate with the service worker via `chrome.runtime.sendMessage()`. Never access `chrome.tabs`, `chrome.debugger`, etc. directly from UI pages.
-
-2. **Shared constants**: All message types, DB names, and settings are defined in `lib/constants.js`. Always use these constants instead of raw strings.
-
-3. **Database layer**: All IndexedDB access goes through `lib/db.js`. Never use `indexedDB.open()` directly.
-
-4. **No external dependencies**: Everything is built from scratch. No npm, no bundlers, no frameworks.
-
-5. **Content script isolation**: Content scripts use IIFEs and Shadow DOM for complete isolation from host pages.
+1. **Message-passing**: UI → service worker via `chrome.runtime.sendMessage()`
+2. **Shared constants**: `lib/constants.js` for all MSG types, DB names, settings
+3. **Database layer**: All IndexedDB through `lib/db.js`
+4. **No external dependencies**
+5. **Content script isolation**: IIFEs and Shadow DOM
+6. **Centralized i18n**: `lib/i18n.js`
+7. **Custom dialogs**: `lib/dialog.js`
 
 ---
 
 ## Development Workflow
 
-### Making Changes
-
-1. Edit the source files directly
-2. Reload the extension at `chrome://extensions/`
-3. Test the changes manually
-4. Check the console for errors
-
 ### Console Locations
 
-| Context | How to Access Console |
-|---------|----------------------|
-| Service worker | `chrome://extensions/` → click "Inspect views: service worker" |
-| Content scripts | Page DevTools (F12) → Console tab (filter by extension) |
-| Popup | Right-click extension icon → "Inspect popup" |
-| Extension pages | Open the page → F12 |
-
-### Useful Chrome URLs
-
-- `chrome://extensions/` - Extension management
-- `chrome://extensions/shortcuts` - Keyboard shortcut configuration
-- `chrome://serviceworker-internals/` - Service worker debugging
-- `chrome://indexeddb-internals/` - IndexedDB inspection
+| Context | Access |
+|---------|--------|
+| Service worker | `chrome://extensions/` → "Inspect views: service worker" |
+| Content scripts | Page DevTools → Console |
+| Popup | Right-click icon → "Inspect popup" |
+| Extension pages | Open page → F12 |
 
 ---
 
 ## Code Conventions
 
-### JavaScript Style
-
-- **ES Modules**: Use `import`/`export` for all shared code
-- **Async/await**: Prefer async/await over raw Promises
-- **Const by default**: Use `const` unless reassignment is needed, then `let`. Never `var`.
-- **Template literals**: Use backtick strings for interpolation
-- **Arrow functions**: Prefer for callbacks and short functions
-- **Error handling**: Always wrap async operations in try/catch
-- **Console logging**: Use `console.log('[Recall] ...')` prefix for all log messages
-- **No semicolons controversy**: This project uses semicolons
-
-### Naming Conventions
-
-| Type | Convention | Example |
-|------|-----------|---------|
-| Constants | UPPER_SNAKE_CASE | `DB_NAME`, `MSG`, `CAPTURE_AUTO` |
-| Functions | camelCase | `captureTab`, `getSnapshot` |
-| Classes | PascalCase | `StorageManager` |
-| Files | kebab-case | `service-worker.js`, `capture-manager.js` |
-| CSS classes | kebab-case | `snapshot-card`, `btn-primary` |
-| HTML IDs | kebab-case | `snapshot-grid`, `search-input` |
-| Message types | UPPER_SNAKE_CASE | `CAPTURE_PAGE`, `GET_SNAPSHOTS` |
-
-### CSS Conventions
-
-- All UI pages support dark mode via `[data-theme="dark"]` selectors
-- Use CSS custom properties for colors when possible
-- BEM-like class naming (but not strict BEM)
-- Each page has its own CSS file - no global stylesheet
-
-### Comment Style
-
-```javascript
-// Single-line comments for brief explanations
-
-/**
- * JSDoc-style for function documentation.
- * @param {number} tabId - Chrome tab ID
- * @returns {Promise<Object|null>} Snapshot metadata or null
- */
-
-// ============================================================
-// SECTION HEADERS for major code sections
-// ============================================================
-```
+- ES Modules, async/await, `const`/`let`, template literals, arrow functions
+- UPPER_SNAKE for constants, camelCase for functions, PascalCase for classes
+- kebab-case for files, CSS classes, i18n keys
+- Dark mode via `[data-theme="dark"]`
+- All text translatable via `data-i18n` or `t()`
 
 ---
 
 ## Adding a New Feature
 
-### Step-by-Step Guide
-
-#### 1. Define Message Types (if needed)
-
-Add new message type constants to `lib/constants.js`:
-
-```javascript
-export const MSG = {
-  // ... existing types
-  MY_NEW_ACTION: 'MY_NEW_ACTION',
-};
-```
-
-#### 2. Add Database Operations (if needed)
-
-Add new functions to `lib/db.js`:
-
-```javascript
-export async function myNewDbOperation(params) {
-  return withStore(STORE_SNAPSHOTS, 'readonly', (store) => {
-    // ... database operation
-  });
-}
-```
-
-If you need a new store, see [Adding a New Database Store](#adding-a-new-database-store).
-
-#### 3. Handle Messages in Service Worker
-
-Add a case to the `handleMessage()` switch in `background/service-worker.js`:
-
-```javascript
-case MSG.MY_NEW_ACTION: {
-  // Perform the action
-  const result = await someOperation(message.param);
-  return result;
-}
-```
-
-#### 4. Call from UI
-
-Send messages from extension pages:
-
-```javascript
-const response = await chrome.runtime.sendMessage({
-  type: 'MY_NEW_ACTION',
-  param: 'value',
-});
-
-if (response.success) {
-  const data = response.data;
-  // Use the result
-} else {
-  console.error('Failed:', response.error);
-}
-```
-
-#### 5. Update UI
-
-Add the necessary HTML, CSS, and JavaScript for the feature's user interface.
+1. Define message types in `lib/constants.js`
+2. Add DB operations in `lib/db.js` (if needed)
+3. Handle in `service-worker.js`
+4. Send from UI
+5. Add translations in `lib/i18n.js`
+6. Update UI with `data-i18n` attributes
 
 ---
 
 ## Adding a New Message Type
 
-1. **Define** in `lib/constants.js`:
-   ```javascript
-   export const MSG = {
-     // ...
-     NEW_TYPE: 'NEW_TYPE',
-   };
-   ```
-
-2. **Handle** in `service-worker.js` `handleMessage()`:
-   ```javascript
-   case MSG.NEW_TYPE: {
-     return doSomething(message.data);
-   }
-   ```
-
-3. **Send** from UI:
-   ```javascript
-   import { MSG } from '../lib/constants.js';
-   const resp = await chrome.runtime.sendMessage({
-     type: MSG.NEW_TYPE,
-     data: payload,
-   });
-   ```
-
-4. **Document** in `docs/API_REFERENCE.md` message types table.
+1. Define in `lib/constants.js`
+2. Handle in `service-worker.js`
+3. Send from UI
+4. Document in `docs/API_REFERENCE.md`
 
 ---
 
 ## Adding a New Database Store
 
-### 1. Increment DB Version
-
-In `lib/constants.js`:
-```javascript
-export const DB_VERSION = 4; // Was 3
-export const STORE_MY_NEW_STORE = 'myNewStore';
-```
-
-### 2. Add Migration
-
-In `lib/db.js`, inside the `onupgradeneeded` handler:
-
-```javascript
-// ---- v3 -> v4: My new store ----
-if (oldVersion < 4) {
-  const store = db.createObjectStore(STORE_MY_NEW_STORE, { keyPath: 'id' });
-  store.createIndex('someField', 'someField', { unique: false });
-}
-```
-
-### 3. Add CRUD Functions
-
-In `lib/db.js`:
-
-```javascript
-export async function saveMyThing(entry) {
-  return withStore(STORE_MY_NEW_STORE, 'readwrite', (store) => store.put(entry));
-}
-
-export async function getMyThing(id) {
-  return withStore(STORE_MY_NEW_STORE, 'readonly', (store) => store.get(id));
-}
-
-export async function deleteMyThing(id) {
-  return withStore(STORE_MY_NEW_STORE, 'readwrite', (store) => store.delete(id));
-}
-```
-
-### 4. Important Notes
-
-- **Never modify existing store schemas in-place** - always create a new version
-- **Handle migration gracefully** - users may upgrade from any version
-- **Test with fresh install AND upgrade** from previous version
+1. Increment `DB_VERSION` in `lib/constants.js`
+2. Add migration in `lib/db.js` `onupgradeneeded`
+3. Add CRUD functions
+4. **Never** modify existing store schemas
 
 ---
 
 ## Adding a New UI Page
 
-### 1. Create Directory
+Create `mynewpage/` with `.html`, `.css`, `.js`. Use standard template with theme, i18n, and dark mode support.
 
-```
-mynewpage/
-├── mynewpage.html
-├── mynewpage.css
-└── mynewpage.js
-```
+---
 
-### 2. HTML Template
+## Adding Translations (i18n)
 
-```html
-<!DOCTYPE html>
-<html lang="en" data-theme="light">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My New Page - Recall</title>
-  <link rel="stylesheet" href="mynewpage.css">
-</head>
-<body>
-  <header class="header">
-    <h1>My New Page</h1>
-    <div class="header-actions" id="header-actions"></div>
-  </header>
-  <main class="main">
-    <!-- Content -->
-  </main>
-  <script type="module" src="mynewpage.js"></script>
-</body>
-</html>
-```
+### Extension Pages
+Add keys to `lib/i18n.js` STRINGS, use `data-i18n` attributes, call `initI18n()` + `applyI18n()`.
 
-### 3. JavaScript Entry
-
-```javascript
-import { initTheme, createThemeToggle } from '../lib/theme.js';
-import { MSG } from '../lib/constants.js';
-
-// Initialize theme
-const theme = initTheme();
-createThemeToggle(document.getElementById('header-actions'));
-
-// Your page logic
-async function init() {
-  const response = await chrome.runtime.sendMessage({
-    type: MSG.GET_SNAPSHOTS,
-  });
-
-  if (response.success) {
-    render(response.data);
-  }
-}
-
-init();
-```
-
-### 4. CSS with Dark Mode
-
-```css
-/* Light mode (default) */
-body {
-  background: #ffffff;
-  color: #1a1a1a;
-}
-
-/* Dark mode */
-[data-theme="dark"] body {
-  background: #1a1a2e;
-  color: #e0e0e0;
-}
-```
-
-### 5. Register in Manifest (if needed)
-
-If the page should be accessible via chrome-extension:// URL, no manifest change is needed. Just link to it from other pages.
+### Content Scripts
+Maintain separate STRINGS dictionary (can't import ES modules).
 
 ---
 
 ## Debugging
 
-### Service Worker Debugging
-
-1. Go to `chrome://extensions/`
-2. Find "Recall - Web Page Snapshots"
-3. Click "Inspect views: service worker"
-4. Console, Network, and Sources tabs are available
-
-### Content Script Debugging
-
-1. Open DevTools on the page (F12)
-2. In Console, look for `[Recall]` prefixed messages
-3. In Sources → Content scripts → Recall, set breakpoints
-
-### IndexedDB Inspection
-
-1. Open DevTools for any extension page
-2. Application tab → IndexedDB → RecallDB
-3. Browse all 4 stores and their contents
-
-### Message Debugging
-
-Add temporary logging to `service-worker.js`:
-
-```javascript
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('[Recall] Message received:', message.type, message);
-  // ...
-});
-```
-
-### Common Debug Scenarios
-
-**Capture not working:**
-1. Check service worker console for errors
-2. Verify content script is loaded (check `window.__recallSnapshotInjected`)
-3. Check if URL is excluded
-
-**UI not updating:**
-1. Check that broadcast messages are being sent
-2. Verify listener is set up in the UI page
-3. Check that the message type matches
-
-**Storage issues:**
-1. Inspect IndexedDB contents
-2. Check `getStorageUsage()` output
-3. Verify `maxStorageMB` setting
+- **Capture issues:** Service worker console, injection guards, URL exclusions
+- **i18n issues:** `initI18n()` before `applyI18n()`, check `resp.data.language`
+- **AI issues:** API key, model, internet, service worker console
 
 ---
 
 ## Testing
 
-### Manual Testing Checklist
+### Manual Checklist
 
-#### Auto-Capture
-- [ ] Navigate to a new page → snapshot appears in manager
-- [ ] Navigate to the same URL within 5 min → no duplicate
-- [ ] Disable auto-capture → no snapshots on navigation
-- [ ] SPA navigation → snapshot captured
-
-#### Manual Capture
-- [ ] Ctrl+Shift+S → snapshot captured
-- [ ] Popup capture button → works
-- [ ] Context menu capture → works
-- [ ] Captures even with auto-capture disabled
-
-#### Deep Capture
-- [ ] Popup deep capture → debugging banner appears → snapshot saved
-- [ ] Resources are inlined (CSS, images)
-- [ ] Viewer renders deep capture correctly
-
-#### Spotlight
-- [ ] Ctrl+Space → overlay appears
-- [ ] Type query → results appear
-- [ ] Arrow keys → navigate results
-- [ ] Enter → opens viewer
-- [ ] Escape → closes overlay
-
-#### Manager
-- [ ] Grid/list/flow/watch views switch correctly
-- [ ] Search filters snapshots
-- [ ] Domain filter works
-- [ ] Multi-select + bulk delete
-- [ ] Tags can be added/edited
-- [ ] Star toggle works
-- [ ] Compare opens diff view
-
-#### Viewer
-- [ ] Snapshot renders in sandbox iframe
-- [ ] Notes save automatically
-- [ ] Annotations highlight text
-- [ ] Flow navigation (prev/next) works
-- [ ] Export downloads file
-
-#### Page Watching
-- [ ] Watch a page → initial check runs
-- [ ] Modify the page → change detected
-- [ ] Notification appears on change
-- [ ] Pause/resume works
-
-#### Settings
-- [ ] All settings save correctly
-- [ ] Ctrl+S saves
-- [ ] Unsaved changes warning appears
-- [ ] Domain exclusions work
-
-#### Dark Mode
-- [ ] Toggle works on all pages
-- [ ] System preference detection works
-- [ ] Preference persists across sessions
+- [ ] Auto-capture, manual, deep, read later, clipper
+- [ ] Spotlight search + AI chat
+- [ ] Manager: 4 views, search, filter, sort, multi-select
+- [ ] Viewer: render, notes, annotations, AI summary
+- [ ] i18n: language switch, verify text changes
+- [ ] Settings: save, backup export/import
+- [ ] Theme: dark/light, custom colors
 
 ---
 
 ## Common Pitfalls
 
-### 1. Blob Serialization
-
-**Problem**: Blobs cannot be sent via `chrome.runtime.sendMessage()`.
-
-**Solution**: Convert to data URL strings before sending. See `migrateThumbnail()` in `service-worker.js`.
-
-### 2. Service Worker Lifecycle
-
-**Problem**: Service workers can be terminated at any time. In-memory state is lost.
-
-**Solution**: Only use in-memory state for ephemeral data (like `tabSessions`). Persist important state in IndexedDB.
-
-### 3. Content Script Re-injection
-
-**Problem**: Content scripts may be injected multiple times (e.g., after extension reload).
-
-**Solution**: Always use injection guards:
-```javascript
-if (window.__recallMyScriptInjected) return;
-window.__recallMyScriptInjected = true;
-```
-
-### 4. Cross-Origin Restrictions
-
-**Problem**: Content scripts can't read cross-origin images (tainted canvas).
-
-**Solution**: Catch canvas errors gracefully. Use `image.crossOrigin = 'anonymous'` where possible. Accept that some images will be placeholders.
-
-### 5. IndexedDB Version Conflicts
-
-**Problem**: Multiple extension contexts may try to open different DB versions simultaneously.
-
-**Solution**: Handle `onversionchange` by closing the connection (`db.js:68-71`).
-
-### 6. Extension Page Navigation
-
-**Problem**: Calling `chrome.tabs.create()` from popup closes the popup.
-
-**Solution**: This is expected behavior. The popup is meant for quick actions.
-
-### 7. CSS Isolation in Content Scripts
-
-**Problem**: Host page CSS bleeds into injected UI.
-
-**Solution**: Use closed Shadow DOM for all content script UI (see spotlight.js, you-were-here.js).
-
-### 8. Async sendResponse
-
-**Problem**: `chrome.runtime.onMessage` listener must return `true` for async responses.
-
-**Solution**: Always `return true` from the listener if using async `sendResponse`:
-```javascript
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  handleAsync(msg).then(sendResponse);
-  return true; // Required for async
-});
-```
+| Pitfall | Problem | Solution |
+|---------|---------|----------|
+| Blob serialization | Can't send via `sendMessage()` | Convert to data URL |
+| SW lifecycle | In-memory state lost on terminate | Use IndexedDB |
+| Script re-injection | Injected multiple times | Injection guards |
+| i18n response format | `{success, data: {language}}` | Access `resp.data.language` |
+| textContent + SVG | `textContent` erases SVG icons | Target inner `<span>` |
+| Content script i18n | Can't import ES modules | Own STRINGS dictionary |
+| DB version conflicts | Multiple contexts, different versions | Handle `onversionchange` |
+| Async sendResponse | Need `return true` for async | Always `return true` |
 
 ---
 
 ## File Size Reference
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `lib/constants.js` | 100 | Constants and defaults |
-| `lib/db.js` | 684 | IndexedDB wrapper |
-| `lib/utils.js` | 225 | Utility functions |
-| `lib/theme.js` | 79 | Theme system |
-| `lib/storage-manager.js` | 171 | Storage management |
-| `background/service-worker.js` | 670 | Main service worker |
-| `background/capture-manager.js` | 350 | Capture orchestration |
-| `background/deep-capture.js` | 487 | CDP deep capture |
-| `background/watcher.js` | 303 | Page change monitoring |
-| `content/snapshot.js` | 400 | DOM capture |
-| `content/spotlight.js` | 871 | Spotlight search overlay |
-| `content/you-were-here.js` | 237 | Revisit notification |
-| `manager/manager.js` | ~984 | Manager UI logic |
-| `viewer/viewer.js` | ~1100 | Viewer UI logic |
-| `diff/diff.js` | ~463 | Diff UI logic |
-| `settings/settings.js` | ~227 | Settings UI logic |
-| **Total** | **~6,000+** | |
+| File | ~Lines | Purpose |
+|------|--------|---------|
+| `lib/constants.js` | 180 | Constants, 50+ MSG types |
+| `lib/db.js` | 900+ | IndexedDB wrapper, 7 stores |
+| `lib/i18n.js` | 285 | i18n translations (en/vi) |
+| `lib/utils.js` | 225 | Utilities |
+| `background/service-worker.js` | 1400+ | Main service worker |
+| `content/spotlight.js` | 1300+ | Spotlight + AI chat |
+| `content/progressive-capture.js` | 600+ | Progressive capture |
+| `manager/manager.js` | 1600+ | Manager UI |
+| `viewer/viewer.js` | 1200+ | Viewer UI |
+| **Total** | **~10,000+** | |

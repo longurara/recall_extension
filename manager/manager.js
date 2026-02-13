@@ -3,6 +3,8 @@
 import { MSG } from '../lib/constants.js';
 import { formatBytes, timeAgo, debounce } from '../lib/utils.js';
 import { initTheme, createThemeToggle } from '../lib/theme.js';
+import { showConfirm, showAlert } from '../lib/dialog.js';
+import { initI18n, applyI18n } from '../lib/i18n.js';
 
 // ============================================================
 // State
@@ -11,7 +13,7 @@ import { initTheme, createThemeToggle } from '../lib/theme.js';
 let allSnapshots = [];
 let filteredSnapshots = [];
 let selectedIds = new Set();
-let viewMode = 'grid'; // 'grid' | 'list' | 'flow' | 'watch'
+let viewMode = 'grid'; // 'grid' | 'list' | 'flow' | 'watch' | 'sessions'
 let cachedFlows = null; // cached navigation flows for flow view
 let cachedWatchedPages = null; // cached watched pages for watch view
 
@@ -162,6 +164,13 @@ function applyFilters() {
     case 'title': filteredSnapshots.sort((a, b) => (a.title || '').localeCompare(b.title || '')); break;
   }
 
+  // Pin: always sort pinned items to the top, preserving existing order within groups
+  filteredSnapshots.sort((a, b) => {
+    const ap = a.isPinned ? 1 : 0;
+    const bp = b.isPinned ? 1 : 0;
+    return bp - ap;
+  });
+
   resultCount.textContent = `${filteredSnapshots.length} of ${allSnapshots.length}`;
   totalInfo.textContent = `${allSnapshots.length} snapshots`;
 
@@ -221,6 +230,36 @@ function render() {
     return;
   }
 
+  // Collections view
+  if (viewMode === 'collections') {
+    renderCollectionsView();
+    return;
+  }
+
+  // Reading list view
+  if (viewMode === 'readingList') {
+    renderReadingListView();
+    return;
+  }
+
+  // Sessions view
+  if (viewMode === 'sessions') {
+    renderSessionsView();
+    return;
+  }
+
+  // Calendar view
+  if (viewMode === 'calendar') {
+    renderCalendarView();
+    return;
+  }
+
+  // Trash view
+  if (viewMode === 'trash') {
+    renderTrashView();
+    return;
+  }
+
   if (allSnapshots.length === 0) {
     container.classList.add('hidden');
     emptyState.classList.remove('hidden');
@@ -272,6 +311,7 @@ function createGridItem(s) {
   div.innerHTML = `
     <input type="checkbox" class="select-check" ${selectedIds.has(s.id) ? 'checked' : ''}>
     ${starHtml}
+    <button class="btn-pin${s.isPinned ? ' pinned' : ''}" title="${s.isPinned ? 'Unpin' : 'Pin to top'}">&#128204;</button>
     ${thumbHtml}
     <div class="item-info">
       <div class="item-title">${escapeHtml(s.title || 'Untitled')}</div>
@@ -298,6 +338,11 @@ function createGridItem(s) {
     if (e.target.classList.contains('btn-tag-edit')) {
       e.stopPropagation();
       showTagEditor(s);
+      return;
+    }
+    if (e.target.closest('.btn-pin')) {
+      e.stopPropagation();
+      togglePin(s);
       return;
     }
     if (selectedIds.size > 0) {
@@ -501,7 +546,7 @@ function openSnapshot(id) {
 
 async function deleteSelected() {
   if (selectedIds.size === 0) return;
-  if (!confirm(`Delete ${selectedIds.size} snapshot(s)? This cannot be undone.`)) return;
+  if (!await showConfirm(`Delete ${selectedIds.size} snapshot(s)?\nThis cannot be undone.`, { title: 'Delete Snapshots', type: 'danger', confirmText: 'Delete', cancelText: 'Cancel' })) return;
 
   try {
     await sendMessage({ type: MSG.DELETE_SNAPSHOTS, ids: Array.from(selectedIds) });
@@ -513,7 +558,7 @@ async function deleteSelected() {
     loadStorageUsage();
   } catch (e) {
     console.error('[Manager] Delete error:', e);
-    alert('Failed to delete: ' + e.message);
+    showAlert('Failed to delete: ' + e.message, { type: 'error', title: 'Error' });
   }
 }
 
@@ -539,12 +584,26 @@ function setViewMode(mode) {
   document.getElementById('btn-list').classList.toggle('active', mode === 'list');
   document.getElementById('btn-flow').classList.toggle('active', mode === 'flow');
   document.getElementById('btn-watch').classList.toggle('active', mode === 'watch');
+  document.getElementById('btn-collections').classList.toggle('active', mode === 'collections');
+  document.getElementById('btn-reading-list').classList.toggle('active', mode === 'readingList');
+  document.getElementById('btn-sessions').classList.toggle('active', mode === 'sessions');
+  document.getElementById('btn-calendar').classList.toggle('active', mode === 'calendar');
+  document.getElementById('btn-trash').classList.toggle('active', mode === 'trash');
 
   if (mode === 'flow') {
-    // Load flows and render
     loadFlows().then(() => render());
   } else if (mode === 'watch') {
     loadWatchedPages().then(() => render());
+  } else if (mode === 'collections') {
+    render();
+  } else if (mode === 'readingList') {
+    render();
+  } else if (mode === 'sessions') {
+    render();
+  } else if (mode === 'calendar') {
+    render();
+  } else if (mode === 'trash') {
+    render();
   } else {
     cachedFlows = null;
     cachedWatchedPages = null;
@@ -556,6 +615,11 @@ document.getElementById('btn-grid').addEventListener('click', () => setViewMode(
 document.getElementById('btn-list').addEventListener('click', () => setViewMode('list'));
 document.getElementById('btn-flow').addEventListener('click', () => setViewMode('flow'));
 document.getElementById('btn-watch').addEventListener('click', () => setViewMode('watch'));
+document.getElementById('btn-collections').addEventListener('click', () => setViewMode('collections'));
+document.getElementById('btn-reading-list').addEventListener('click', () => setViewMode('readingList'));
+document.getElementById('btn-sessions').addEventListener('click', () => setViewMode('sessions'));
+document.getElementById('btn-calendar').addEventListener('click', () => setViewMode('calendar'));
+document.getElementById('btn-trash').addEventListener('click', () => setViewMode('trash'));
 
 // Bulk actions
 selectAll.addEventListener('change', (e) => {
@@ -580,6 +644,11 @@ document.getElementById('btn-cancel-select').addEventListener('click', () => {
 // Settings
 document.getElementById('btn-settings').addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('settings/settings.html') });
+});
+
+// Dashboard
+document.getElementById('btn-dashboard').addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('dashboard/dashboard.html') });
 });
 
 // Listen for updates
@@ -667,12 +736,12 @@ function createWatchCard(entry) {
   const lastChangedStr = entry.lastChangedAt ? timeAgo(entry.lastChangedAt) : 'No changes';
   const statusClass = entry.lastError ? 'error'
     : entry.lastChangedAt ? 'changed'
-    : entry.lastChecked ? 'ok'
-    : 'pending';
+      : entry.lastChecked ? 'ok'
+        : 'pending';
 
   const statusLabel = entry.lastError ? 'Error'
     : !entry.isActive ? 'Paused'
-    : 'Active';
+      : 'Active';
 
   const intervalLabel = entry.intervalMinutes < 60
     ? `${entry.intervalMinutes}m`
@@ -738,7 +807,7 @@ function createWatchCard(entry) {
 
   div.querySelector('.watch-btn-delete').addEventListener('click', async (e) => {
     e.stopPropagation();
-    if (!confirm(`Stop watching "${entry.title || entry.url}"?`)) return;
+    if (!await showConfirm(`Stop watching "${entry.title || entry.url}"?`, { title: 'Stop Watching', type: 'danger', confirmText: 'Stop', cancelText: 'Cancel' })) return;
     try {
       await sendMessage({ type: MSG.UNWATCH_PAGE, id: entry.id });
       loadWatchedPages().then(() => render());
@@ -828,7 +897,7 @@ function showAddWatchDialog() {
     try {
       new URL(url); // validate
     } catch {
-      alert('Please enter a valid URL.');
+      showAlert('Please enter a valid URL.', { type: 'warning', title: 'Invalid URL' });
       urlInput.focus();
       return;
     }
@@ -847,7 +916,7 @@ function showAddWatchDialog() {
       closeDialog();
       loadWatchedPages().then(() => render());
     } catch (err) {
-      alert('Failed to watch page: ' + err.message);
+      showAlert('Failed to watch page: ' + err.message, { type: 'error', title: 'Error' });
       saveBtn.textContent = 'Start Watching';
       saveBtn.disabled = false;
     }
@@ -883,8 +952,8 @@ function showTagEditor(snapshot) {
       </div>
       <div class="tag-editor-current">
         ${currentTags.map(t =>
-          `<span class="tag-chip tag-chip-removable" data-tag="${escapeHtml(t)}">${escapeHtml(t)} <span class="tag-remove">&times;</span></span>`
-        ).join('')}
+    `<span class="tag-chip tag-chip-removable" data-tag="${escapeHtml(t)}">${escapeHtml(t)} <span class="tag-remove">&times;</span></span>`
+  ).join('')}
       </div>
       <div class="tag-editor-input-row">
         <input type="text" class="tag-input" placeholder="Add a tag..." list="tag-suggestions" autocomplete="off">
@@ -975,9 +1044,537 @@ function getAllUsedTags() {
 }
 
 // ============================================================
+// Collections View
+// ============================================================
+
+async function renderCollectionsView() {
+  container.classList.remove('hidden');
+  emptyState.classList.add('hidden');
+  container.className = 'snapshot-container collections-view';
+
+  try {
+    const collections = await sendMessage({ type: MSG.GET_COLLECTIONS });
+
+    if (!collections || collections.length === 0) {
+      container.innerHTML = `
+        <div class="collections-empty">
+          <h3>No collections yet</h3>
+          <p>Create your first collection to organize snapshots.</p>
+          <button id="btn-create-collection" class="btn btn-primary-sm">+ New Collection</button>
+        </div>
+      `;
+      resultCount.textContent = '0 collections';
+      container.querySelector('#btn-create-collection').addEventListener('click', createCollection);
+      return;
+    }
+
+    resultCount.textContent = `${collections.length} collections`;
+
+    let html = `<div class="collections-header-bar">
+      <button id="btn-create-collection" class="btn btn-primary-sm">+ New Collection</button>
+    </div>`;
+
+    html += collections.map(c => {
+      const count = allSnapshots.filter(s => s.collectionId === c.id).length;
+      return `
+        <div class="collection-card" data-id="${c.id}">
+          <div class="collection-card-info">
+            <div class="collection-icon">${c.icon || '📁'}</div>
+            <div>
+              <div class="collection-name">${escapeHtml(c.name)}</div>
+              <div class="collection-count">${count} snapshot${count !== 1 ? 's' : ''}</div>
+            </div>
+          </div>
+          <div class="collection-card-actions">
+            <button class="btn-ghost-sm btn-delete-collection" data-id="${c.id}" title="Delete">&times;</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    container.innerHTML = html;
+
+    container.querySelector('#btn-create-collection').addEventListener('click', createCollection);
+
+    container.querySelectorAll('.collection-card').forEach(el => {
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.btn-delete-collection')) return;
+        // Show snapshots in this collection
+        const cId = el.dataset.id;
+        filteredSnapshots = allSnapshots.filter(s => s.collectionId === cId);
+        setViewMode('grid');
+      });
+    });
+
+    container.querySelectorAll('.btn-delete-collection').forEach(el => {
+      el.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!await showConfirm('Delete this collection?', { title: 'Delete Collection', type: 'danger', confirmText: 'Delete', cancelText: 'Cancel' })) return;
+        try {
+          await sendMessage({ type: MSG.DELETE_COLLECTION, id: el.dataset.id });
+          renderCollectionsView();
+        } catch (err) {
+          showAlert('Failed to delete: ' + err.message, { type: 'error', title: 'Error' });
+        }
+      });
+    });
+  } catch (e) {
+    console.error('[Manager] Collections error:', e);
+    container.innerHTML = '<p>Error loading collections.</p>';
+  }
+}
+
+async function createCollection() {
+  const name = prompt('Collection name:');
+  if (!name || !name.trim()) return;
+  try {
+    await sendMessage({ type: MSG.CREATE_COLLECTION, name: name.trim() });
+    renderCollectionsView();
+  } catch (e) {
+    showAlert('Error: ' + e.message, { type: 'error', title: 'Error' });
+  }
+}
+
+// ============================================================
+// Reading List View
+// ============================================================
+
+async function renderReadingListView() {
+  container.classList.remove('hidden');
+  emptyState.classList.add('hidden');
+  container.className = 'snapshot-container grid-view';
+
+  try {
+    const readLaterItems = await sendMessage({ type: MSG.GET_READ_LATER });
+
+    if (!readLaterItems || readLaterItems.length === 0) {
+      container.innerHTML = `
+        <div class="reading-list-empty">
+          <h3>Reading list is empty</h3>
+          <p>Save pages for later using the "Read Later" button in the popup or right-click menu.</p>
+        </div>
+      `;
+      resultCount.textContent = '0 saved';
+      return;
+    }
+
+    resultCount.textContent = `${readLaterItems.length} saved for later`;
+
+    const fragment = document.createDocumentFragment();
+    for (const s of readLaterItems) {
+      const el = createGridItem(s);
+      // Add read/unread indicator
+      if (s.isRead) el.classList.add('is-read');
+      fragment.appendChild(el);
+    }
+
+    container.innerHTML = '';
+    container.appendChild(fragment);
+  } catch (e) {
+    console.error('[Manager] Reading list error:', e);
+    container.innerHTML = '<p>Error loading reading list.</p>';
+  }
+}
+
+// ============================================================
+// Sessions View
+// ============================================================
+
+async function renderSessionsView() {
+  container.classList.remove('hidden');
+  emptyState.classList.add('hidden');
+  container.className = 'snapshot-container sessions-view';
+
+  try {
+    const sessions = await sendMessage({ type: MSG.GET_SESSIONS });
+
+    if (!sessions || sessions.length === 0) {
+      container.innerHTML = `
+        <div class="sessions-empty">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <path d="M8 16h32M8 24h24M8 32h28" stroke="#ddd" stroke-width="2" stroke-linecap="round"/>
+            <path d="M36 28l4 4-4 4" stroke="#ddd" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <h3>No saved sessions yet</h3>
+          <p>Sessions are saved automatically every 2 minutes. Reopen the browser to see your previous sessions here.</p>
+        </div>
+      `;
+      resultCount.textContent = '0 sessions';
+      return;
+    }
+
+    resultCount.textContent = `${sessions.length} sessions`;
+
+    const fragment = document.createDocumentFragment();
+
+    for (const session of sessions) {
+      const card = document.createElement('div');
+      card.className = 'session-card';
+      card.dataset.id = session.id;
+
+      const dateStr = new Date(session.savedAt).toLocaleString();
+      const agoStr = timeAgo(session.savedAt);
+
+      card.innerHTML = `
+        <div class="session-header">
+          <div class="session-info">
+            <span class="session-date">${dateStr}</span>
+            <span class="session-ago">${agoStr}</span>
+            <span class="session-count">${session.tabCount} tab${session.tabCount !== 1 ? 's' : ''} · ${session.windowCount} window${session.windowCount !== 1 ? 's' : ''}</span>
+          </div>
+          <div class="session-actions">
+            <button class="btn btn-primary-sm btn-restore-online" title="Restore Online (open original URLs)">🌐 Online</button>
+            <button class="btn btn-secondary-sm btn-restore-offline" title="Restore Offline (open saved snapshots)">💾 Offline</button>
+            <button class="btn btn-ghost-sm btn-toggle-tabs" title="Show tabs">▼</button>
+            <button class="btn btn-ghost-sm btn-delete-session" title="Delete">&times;</button>
+          </div>
+        </div>
+        <div class="session-tabs hidden">
+          ${session.tabs.map((t, i) => `
+            <div class="session-tab-row">
+              <img class="session-tab-icon" src="${t.favIconUrl || 'icons/icon16.png'}" alt="" width="16" height="16" onerror="this.src='icons/icon16.png'">
+              <span class="session-tab-title" title="${escapeHtml(t.url)}">${escapeHtml(t.title || t.url)}</span>
+              ${t.pinned ? '<span class="session-pin">📌</span>' : ''}
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+      // Toggle tabs list
+      card.querySelector('.btn-toggle-tabs').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tabsDiv = card.querySelector('.session-tabs');
+        const btn = card.querySelector('.btn-toggle-tabs');
+        tabsDiv.classList.toggle('hidden');
+        btn.textContent = tabsDiv.classList.contains('hidden') ? '▼' : '▲';
+      });
+
+      // Restore Online
+      card.querySelector('.btn-restore-online').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const btn = e.target;
+        if (!await showConfirm(`Restore ${session.tabCount} tab(s) online?`, { title: 'Restore Session', confirmText: 'Restore', cancelText: 'Cancel' })) return;
+        btn.disabled = true;
+        btn.textContent = '...';
+        try {
+          await sendMessage({ type: MSG.RESTORE_SESSION, sessionId: session.id, mode: 'online' });
+          btn.textContent = '✓ Done';
+        } catch (err) {
+          btn.textContent = 'Failed';
+          console.error(err);
+        }
+      });
+
+      // Restore Offline
+      card.querySelector('.btn-restore-offline').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const btn = e.target;
+        if (!await showConfirm(`Restore ${session.tabCount} tab(s) offline (from snapshots)?`, { title: 'Restore Offline', confirmText: 'Restore', cancelText: 'Cancel' })) return;
+        btn.disabled = true;
+        btn.textContent = '...';
+        try {
+          await sendMessage({ type: MSG.RESTORE_SESSION, sessionId: session.id, mode: 'offline' });
+          btn.textContent = '✓ Done';
+        } catch (err) {
+          btn.textContent = 'Failed';
+          console.error(err);
+        }
+      });
+
+      // Delete session
+      card.querySelector('.btn-delete-session').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!await showConfirm('Delete this session?', { title: 'Delete Session', type: 'danger', confirmText: 'Delete', cancelText: 'Cancel' })) return;
+        try {
+          await sendMessage({ type: MSG.DELETE_SESSION, id: session.id });
+          renderSessionsView();
+        } catch (err) {
+          showAlert('Failed: ' + err.message, { type: 'error', title: 'Error' });
+        }
+      });
+
+      fragment.appendChild(card);
+    }
+
+    container.innerHTML = '';
+    container.appendChild(fragment);
+  } catch (e) {
+    console.error('[Manager] Sessions error:', e);
+    container.innerHTML = '<p>Error loading sessions.</p>';
+  }
+}
+
+// ============================================================
+// Pin Snapshot
+// ============================================================
+
+async function togglePin(snapshot) {
+  const newPinned = !snapshot.isPinned;
+  try {
+    await sendMessage({ type: newPinned ? MSG.PIN_SNAPSHOT : MSG.UNPIN_SNAPSHOT, id: snapshot.id });
+    snapshot.isPinned = newPinned;
+    applyFilters();
+  } catch (e) {
+    console.error('[Manager] Pin error:', e);
+  }
+}
+
+// ============================================================
+// Calendar View
+// ============================================================
+
+let calendarDate = new Date(); // Currently viewed month
+
+function renderCalendarView() {
+  const year = calendarDate.getFullYear();
+  const month = calendarDate.getMonth();
+  const today = new Date();
+  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  // Count snapshots per day
+  const dayCounts = {};
+  for (const s of allSnapshots) {
+    const d = new Date(s.timestamp);
+    if (d.getFullYear() === year && d.getMonth() === month) {
+      const day = d.getDate();
+      dayCounts[day] = (dayCounts[day] || 0) + 1;
+    }
+  }
+
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+
+  let html = `
+    <div class="calendar-container">
+      <div class="calendar-header">
+        <button class="btn btn-ghost calendar-nav" id="cal-prev">&larr;</button>
+        <h2 class="calendar-title">${monthNames[month]} ${year}</h2>
+        <button class="btn btn-ghost calendar-nav" id="cal-next">&rarr;</button>
+      </div>
+      <div class="calendar-grid">
+        <div class="cal-day-header">Sun</div>
+        <div class="cal-day-header">Mon</div>
+        <div class="cal-day-header">Tue</div>
+        <div class="cal-day-header">Wed</div>
+        <div class="cal-day-header">Thu</div>
+        <div class="cal-day-header">Fri</div>
+        <div class="cal-day-header">Sat</div>
+  `;
+
+  // Empty cells before first day
+  for (let i = 0; i < firstDay; i++) {
+    html += '<div class="cal-day empty"></div>';
+  }
+
+  // Day cells
+  for (let d = 1; d <= daysInMonth; d++) {
+    const count = dayCounts[d] || 0;
+    const isToday = (d === today.getDate() && month === today.getMonth() && year === today.getFullYear());
+    const hasSnaps = count > 0;
+
+    html += `
+      <div class="cal-day${isToday ? ' today' : ''}${hasSnaps ? ' has-snapshots' : ''}" data-day="${d}">
+        <span class="cal-day-num">${d}</span>
+        ${count > 0 ? `<span class="cal-count">${count}</span>` : ''}
+      </div>
+    `;
+  }
+
+  html += '</div></div>';
+
+  // Day detail area
+  html += '<div id="cal-day-detail" class="cal-day-detail"></div>';
+
+  container.innerHTML = html;
+  container.className = 'snapshot-container calendar-view';
+  emptyState.classList.add('hidden');
+
+  // Navigation
+  container.querySelector('#cal-prev').addEventListener('click', () => {
+    calendarDate.setMonth(calendarDate.getMonth() - 1);
+    renderCalendarView();
+  });
+  container.querySelector('#cal-next').addEventListener('click', () => {
+    calendarDate.setMonth(calendarDate.getMonth() + 1);
+    renderCalendarView();
+  });
+
+  // Click on day cells
+  container.querySelectorAll('.cal-day[data-day]').forEach(cell => {
+    cell.addEventListener('click', () => {
+      const day = parseInt(cell.dataset.day);
+      showDaySnapshots(year, month, day);
+
+      // Highlight selected day
+      container.querySelectorAll('.cal-day').forEach(c => c.classList.remove('selected'));
+      cell.classList.add('selected');
+    });
+  });
+}
+
+function showDaySnapshots(year, month, day) {
+  const detail = container.querySelector('#cal-day-detail');
+  const dayStart = new Date(year, month, day).getTime();
+  const dayEnd = new Date(year, month, day + 1).getTime();
+
+  const daySnapshots = allSnapshots.filter(s => s.timestamp >= dayStart && s.timestamp < dayEnd);
+
+  if (daySnapshots.length === 0) {
+    detail.innerHTML = '<p class="cal-empty">No snapshots on this day</p>';
+    return;
+  }
+
+  let html = `<h3 class="cal-detail-title">${daySnapshots.length} snapshot${daySnapshots.length > 1 ? 's' : ''} on ${month + 1}/${day}/${year}</h3>`;
+  html += '<div class="cal-detail-list">';
+  for (const s of daySnapshots) {
+    const time = new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const pinIcon = s.isPinned ? ' 📌' : '';
+    html += `
+      <div class="cal-detail-item" data-id="${s.id}">
+        <span class="cal-detail-time">${time}</span>
+        <span class="cal-detail-title-text">${escapeHtml(s.title || 'Untitled')}${pinIcon}</span>
+        <span class="cal-detail-domain">${escapeHtml(s.domain)}</span>
+        <span class="type-badge ${s.captureType || 'auto'}">${s.captureType || 'auto'}</span>
+      </div>
+    `;
+  }
+  html += '</div>';
+  detail.innerHTML = html;
+
+  detail.querySelectorAll('.cal-detail-item').forEach(item => {
+    item.addEventListener('click', () => openSnapshot(item.dataset.id));
+  });
+}
+
+// ============================================================
+// Trash View
+// ============================================================
+
+async function renderTrashView() {
+  container.className = 'snapshot-container trash-view';
+  emptyState.classList.add('hidden');
+
+  try {
+    const trashItems = await sendMessage({ type: MSG.GET_TRASH });
+
+    if (trashItems.length === 0) {
+      container.innerHTML = `
+        <div class="trash-empty">
+          <svg width="48" height="48" viewBox="0 0 16 16" fill="none" style="opacity:0.3">
+            <path d="M2 4h12M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M4 4l.8 9a1 1 0 001 .9h4.4a1 1 0 001-.9L12 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <h3>Trash is empty</h3>
+          <p>Deleted snapshots will appear here for 30 days before being permanently removed.</p>
+        </div>
+      `;
+      return;
+    }
+
+    let html = `
+      <div class="trash-header">
+        <span class="trash-count">${trashItems.length} item${trashItems.length > 1 ? 's' : ''} in trash</span>
+        <div class="trash-actions">
+          <button class="btn btn-ghost-sm" id="btn-restore-all">Restore All</button>
+          <button class="btn btn-danger-sm" id="btn-empty-trash">Empty Trash</button>
+        </div>
+      </div>
+      <div class="trash-list">
+    `;
+
+    for (const s of trashItems) {
+      const deletedAgo = s.deletedAt ? timeAgo(s.deletedAt) : 'unknown';
+      const autoDeleteDate = s.deletedAt ? new Date(s.deletedAt + 30 * 24 * 60 * 60 * 1000).toLocaleDateString() : '';
+
+      html += `
+        <div class="trash-item" data-id="${s.id}">
+          <div class="trash-item-info">
+            <div class="trash-item-title">${escapeHtml(s.title || 'Untitled')}</div>
+            <div class="trash-item-meta">
+              <span>${escapeHtml(s.domain)}</span>
+              <span>Deleted ${deletedAgo}</span>
+              ${autoDeleteDate ? `<span class="trash-auto-delete">Auto-delete: ${autoDeleteDate}</span>` : ''}
+            </div>
+          </div>
+          <div class="trash-item-actions">
+            <button class="btn btn-ghost-sm btn-restore" data-id="${s.id}">Restore</button>
+            <button class="btn btn-danger-sm btn-perm-delete" data-id="${s.id}">Delete Forever</button>
+          </div>
+        </div>
+      `;
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+
+    // Event listeners
+    container.querySelectorAll('.btn-restore').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        try {
+          await sendMessage({ type: MSG.RESTORE_SNAPSHOT, id: btn.dataset.id });
+          await loadData();
+          renderTrashView();
+        } catch (e) {
+          showAlert('Restore failed: ' + e.message, { type: 'error', title: 'Error' });
+        }
+      });
+    });
+
+    container.querySelectorAll('.btn-perm-delete').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!await showConfirm('Permanently delete this snapshot?\nThis cannot be undone.', { title: 'Delete Forever', type: 'danger', confirmText: 'Delete', cancelText: 'Cancel' })) return;
+        try {
+          await sendMessage({ type: MSG.PERMANENT_DELETE, id: btn.dataset.id });
+          renderTrashView();
+        } catch (e) {
+          showAlert('Delete failed: ' + e.message, { type: 'error', title: 'Error' });
+        }
+      });
+    });
+
+    const restoreAllBtn = container.querySelector('#btn-restore-all');
+    if (restoreAllBtn) {
+      restoreAllBtn.addEventListener('click', async () => {
+        if (!await showConfirm(`Restore all ${trashItems.length} items?`, { title: 'Restore All', confirmText: 'Restore', cancelText: 'Cancel' })) return;
+        try {
+          await sendMessage({ type: MSG.RESTORE_SNAPSHOT, ids: trashItems.map(s => s.id) });
+          await loadData();
+          renderTrashView();
+        } catch (e) {
+          showAlert('Restore failed: ' + e.message, { type: 'error', title: 'Error' });
+        }
+      });
+    }
+
+    const emptyTrashBtn = container.querySelector('#btn-empty-trash');
+    if (emptyTrashBtn) {
+      emptyTrashBtn.addEventListener('click', async () => {
+        if (!await showConfirm(`Permanently delete all ${trashItems.length} items?\nThis cannot be undone.`, { title: 'Empty Trash', type: 'danger', confirmText: 'Empty Trash', cancelText: 'Cancel' })) return;
+        try {
+          await sendMessage({ type: MSG.EMPTY_TRASH });
+          renderTrashView();
+        } catch (e) {
+          showAlert('Empty trash failed: ' + e.message, { type: 'error', title: 'Error' });
+        }
+      });
+    }
+  } catch (e) {
+    console.error('[Manager] Trash view error:', e);
+    container.innerHTML = '<p>Error loading trash.</p>';
+  }
+}
+
+// ============================================================
 // Init
 // ============================================================
 
 initTheme();
 createThemeToggle(document.querySelector('.topbar-right'));
+initI18n().then(() => applyI18n());
 loadData();
+
+// Auto-switch to sessions view if opened via notification
+if (location.hash === '#sessions') {
+  setTimeout(() => setViewMode('sessions'), 500);
+}

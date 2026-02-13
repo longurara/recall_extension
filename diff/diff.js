@@ -9,7 +9,7 @@ import { initTheme, createThemeToggle } from '../lib/theme.js';
 // ============================================================
 
 const DB_NAME = 'RecallDB';
-const DB_VERSION = 3;
+const DB_VERSION = 5;
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -41,6 +41,25 @@ function openDB() {
         watchStore.createIndex('isActive', 'isActive', { unique: false });
         watchStore.createIndex('lastChecked', 'lastChecked', { unique: false });
         watchStore.createIndex('domain', 'domain', { unique: false });
+      }
+      if (e.oldVersion < 4) {
+        const collStore = db.createObjectStore('collections', { keyPath: 'id' });
+        collStore.createIndex('name', 'name', { unique: false });
+        collStore.createIndex('createdAt', 'createdAt', { unique: false });
+        const ruleStore = db.createObjectStore('autoTagRules', { keyPath: 'id' });
+        ruleStore.createIndex('domain', 'domain', { unique: false });
+        const tx = e.target.transaction;
+        const snapStore = tx.objectStore('snapshots');
+        if (!snapStore.indexNames.contains('isReadLater')) {
+          snapStore.createIndex('isReadLater', 'isReadLater', { unique: false });
+        }
+        if (!snapStore.indexNames.contains('collectionId')) {
+          snapStore.createIndex('collectionId', 'collectionId', { unique: false });
+        }
+      }
+      if (e.oldVersion < 5) {
+        const sessStore = db.createObjectStore('sessions', { keyPath: 'id' });
+        sessStore.createIndex('savedAt', 'savedAt', { unique: false });
       }
     };
   });
@@ -441,7 +460,7 @@ btnTextDiff.addEventListener('click', () => {
 // ============================================================
 
 function goBack() {
-  chrome.runtime.sendMessage({ type: MSG.OPEN_MANAGER }).catch(() => {});
+  chrome.runtime.sendMessage({ type: MSG.OPEN_MANAGER }).catch(() => { });
 }
 
 btnBack.addEventListener('click', goBack);

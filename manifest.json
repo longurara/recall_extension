@@ -3,7 +3,6 @@
   "name": "Recall - Web Page Snapshots",
   "version": "1.0.0",
   "description": "Auto-save & recall web pages. View snapshots anytime, even offline.",
-
   "permissions": [
     "pageCapture",
     "activeTab",
@@ -19,39 +18,73 @@
     "alarms",
     "notifications"
   ],
-
-  "host_permissions": ["<all_urls>"],
-
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "background": {
     "service_worker": "background/service-worker.js",
     "type": "module"
   },
-
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["content/snapshot.js"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content/progressive-capture.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     },
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["content/spotlight.js"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content/snapshot.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     },
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["content/you-were-here.js"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content/spotlight.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content/you-were-here.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content/clipper.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }
   ],
-
   "side_panel": {
     "default_path": "sidepanel/sidepanel.html"
   },
-
   "action": {
     "default_title": "Recall - Web Page Snapshots",
     "default_popup": "popup/popup.html",
@@ -62,11 +95,11 @@
       "128": "icons/icon128.png"
     }
   },
-
   "sandbox": {
-    "pages": ["viewer/sandbox.html"]
+    "pages": [
+      "viewer/sandbox.html"
+    ]
   },
-
   "commands": {
     "capture-page": {
       "suggested_key": {
@@ -88,9 +121,14 @@
         "mac": "MacCtrl+Space"
       },
       "description": "Open Recall Spotlight Search"
+    },
+    "read-later": {
+      "suggested_key": {
+        "default": "Alt+Shift+R"
+      },
+      "description": "Save current page to Read Later"
     }
   },
-
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

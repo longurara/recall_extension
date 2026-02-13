@@ -1,6 +1,493 @@
-# Technical Architecture
+# Kiến trúc kỹ thuật / Technical Architecture
 
-This document provides a deep-dive into the internal architecture, data model, design decisions, and code organization of the Recall extension.
+> **[🇻🇳 Tiếng Việt](#tiếng-việt)** | **[🇬🇧 English](#english)**
+
+---
+
+# 🇻🇳 Tiếng Việt
+
+Chi tiết kiến trúc nội bộ, mô hình dữ liệu, quyết định thiết kế và tổ chức mã nguồn của tiện ích Recall.
+
+---
+
+## Mục lục
+
+- [Tổng quan hệ thống](#tổng-quan-hệ-thống)
+- [Ngữ cảnh thực thi](#ngữ-cảnh-thực-thi)
+- [Mô hình dữ liệu](#mô-hình-dữ-liệu)
+- [Giao thức tin nhắn](#giao-thức-tin-nhắn)
+- [Pipeline chụp trang](#pipeline-chụp-trang)
+- [Pipeline chụp sâu](#pipeline-chụp-sâu)
+- [Chụp tiến trình](#chụp-tiến-trình)
+- [Web Clipper](#web-clipper-vi)
+- [Kiến trúc tìm kiếm](#kiến-trúc-tìm-kiếm)
+- [Tích hợp AI](#tích-hợp-ai)
+- [Theo dõi luồng điều hướng](#theo-dõi-luồng-điều-hướng)
+- [Theo dõi thay đổi trang](#theo-dõi-thay-đổi-trang-vi)
+- [Quản lý phiên](#quản-lý-phiên-vi)
+- [Quản lý bộ nhớ](#quản-lý-bộ-nhớ-vi)
+- [Đa ngôn ngữ (i18n)](#đa-ngôn-ngữ-i18n-vi)
+- [Hệ thống sao lưu](#hệ-thống-sao-lưu)
+- [Mô hình bảo mật](#mô-hình-bảo-mật)
+- [Hệ thống theme](#hệ-thống-theme)
+- [Cân nhắc hiệu năng](#cân-nhắc-hiệu-năng)
+- [Quyết định thiết kế](#quyết-định-thiết-kế)
+
+---
+
+## Tổng quan hệ thống
+
+Recall hoạt động trên bốn ngữ cảnh thực thi Chrome extension riêng biệt, giao tiếp chủ yếu qua Chrome message passing API:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                     Service Worker (Nền)                          │
+│                                                                   │
+│  ┌────────────────┐ ┌──────────────────┐ ┌───────────────────┐   │
+│  │service-worker   │ │capture-manager   │ │deep-capture       │   │
+│  │.js              │ │.js               │ │.js                │   │
+│  │                 │ │                  │ │                   │   │
+│  │- Định tuyến msg │ │- Chụp DOM       │ │- Lệnh CDP         │   │
+│  │- Theo dõi nav   │ │- Screenshot     │ │- Tải tài nguyên   │   │
+│  │- AI chat/tóm tắt│ │- Thumbnail      │ │- Chụp MHTML       │   │
+│  │- Quản lý phiên  │ │- Nén            │ │- Xây dựng bundle  │   │
+│  │- Gắn thẻ tự động│ │- Xuất           │ │- Tái tạo HTML     │   │
+│  │- Alarm          │ │                  │ │                   │   │
+│  │- Menu ngữ cảnh  │ │                  │ │                   │   │
+│  └────────┬────────┘ └────────┬─────────┘ └────────┬──────────┘  │
+│           │                   │                     │             │
+│  ┌────────┴────────┐ ┌───────┴─────────┐ ┌────────┴──────────┐  │
+│  │watcher.js       │ │storage-manager  │ │backup-exporter    │  │
+│  │                 │ │.js              │ │.js                │  │
+│  │- Tải trang      │ │- Kiểm tra quota │ │- Tạo ZIP          │  │
+│  │- Hash FNV-1a    │ │- Dọn dẹp tự động│ │- Nhập/xuất        │  │
+│  │- Phát hiện thay │ │- Dọn dẹp theo   │ │- Di chuyển dữ liệu│  │
+│  │  đổi            │ │  thời gian      │ │                   │  │
+│  │- Thông báo      │ │- Thống kê       │ │                   │  │
+│  └─────────────────┘ └─────────────────┘ └───────────────────┘  │
+└────────────────────────────┬──────────────────────────────────────┘
+                             │
+               chrome.runtime.sendMessage / onMessage
+                             │
+         ┌───────────────────┼───────────────────────┐
+         │                   │                       │
+         ▼                   ▼                       ▼
+┌────────────────┐  ┌──────────────────┐  ┌─────────────────────┐
+│Content Scripts  │  │Trang Extension   │  │IndexedDB (RecallDB) │
+│                │  │                  │  │  v5 — 7 stores      │
+│ snapshot.js    │  │ popup/           │  │                     │
+│ spotlight.js   │  │ sidepanel/       │  │ snapshots           │
+│ clipper.js     │  │ manager/         │  │ snapshotData        │
+│ progressive-   │  │ viewer/          │  │ settings            │
+│  capture.js    │  │ diff/            │  │ watchedPages        │
+│ you-were-      │  │ dashboard/       │  │ collections         │
+│  here.js       │  │ settings/        │  │ autoTagRules        │
+│                │  │                  │  │ sessions            │
+└────────────────┘  └──────────────────┘  └─────────────────────┘
+```
+
+---
+
+## Ngữ cảnh thực thi
+
+### 1. Service Worker (`background/`)
+
+Service worker là trung tâm điều phối. Chạy dưới dạng **module service worker Manifest V3** (`"type": "module"`):
+
+- **Định tuyến tin nhắn**: Tất cả `chrome.runtime.onMessage` chuyển đến `handleMessage()` switch
+- **Tự động chụp**: Lắng nghe `webNavigation.onCompleted` và `webNavigation.onHistoryStateUpdated`
+- **Tích hợp AI**: Xử lý `SPOTLIGHT_AI_CHAT` và `GENERATE_SUMMARY` qua Google Gemini API
+- **Quản lý phiên**: Lưu/khôi phục phiên tab với `SAVE_SESSION` / `RESTORE_SESSION`
+- **Bộ sưu tập & gắn thẻ tự động**: CRUD cho collections và auto-tag rules
+- **Thùng rác**: Di chuyển snapshot vào thùng rác với tự động xóa sau 30 ngày
+- **Theo dõi luồng điều hướng**: In-memory `Map<tabId, SessionInfo>`
+- **Alarm**:
+  - `recall-time-cleanup` (mỗi 6 giờ): xóa auto-capture cũ
+  - `recall-page-watch` (mỗi 15 phút): kiểm tra trang theo dõi
+  - `recall-auto-purge` (mỗi 24 giờ): xóa thùng rác quá 30 ngày
+
+### 2. Content Scripts (`content/`)
+
+Năm content script được inject vào mọi trang `http://` và `https://`:
+
+| Script | Mục đích | Cách ly |
+|--------|----------|---------|
+| `snapshot.js` | Clone DOM và tuần tự hóa | IIFE với guard `window.__recallSnapshotInjected` |
+| `spotlight.js` | Overlay tìm kiếm + AI chat | Shadow DOM (closed) |
+| `clipper.js` | Web clipper chọn vùng | IIFE với injection guard |
+| `progressive-capture.js` | Chụp dần bằng MutationObserver | IIFE với injection guard |
+| `you-were-here.js` | Thanh thông báo truy cập lại | Shadow DOM (closed) |
+
+### 3. Trang Extension
+
+| Trang | Mục đích |
+|-------|----------|
+| `popup/` | Popup thanh công cụ với thao tác nhanh |
+| `sidepanel/` | Side panel Chrome danh sách snapshot |
+| `manager/` | Quản lý snapshot (grid/list/flow/watch) |
+| `viewer/` | Xem snapshot với ghi chú, chú thích, tóm tắt AI |
+| `diff/` | So sánh trang cạnh nhau |
+| `dashboard/` | Dashboard phân tích và thống kê |
+| `settings/` | Giao diện cấu hình |
+
+### 4. Thư viện dùng chung (`lib/`)
+
+| Module | Mục đích |
+|--------|----------|
+| `constants.js` | Cấu hình DB, 50+ loại tin nhắn, cài đặt mặc định |
+| `db.js` | Wrapper IndexedDB cho 7 stores |
+| `utils.js` | UUID, định dạng, nén, thumbnail |
+| `i18n.js` | Dịch en/vi tập trung, dịch DOM |
+| `theme.js` | Chế độ tối/sáng + 6 bảng màu tùy chỉnh |
+| `dialog.js` + `dialog.css` | Hộp thoại modal tùy chỉnh |
+| `storage-manager.js` | Theo dõi quota & dọn dẹp tự động |
+| `zip.js` | Tạo ZIP (không dependency) |
+
+---
+
+## Mô hình dữ liệu
+
+### Schema IndexedDB: `RecallDB` (phiên bản 5)
+
+#### Store: `snapshots` (keyPath: `id`)
+
+Metadata snapshot. Giữ nhẹ để truy vấn danh sách nhanh.
+
+```typescript
+interface SnapshotMetadata {
+  id: string;                     // UUID v4
+  url: string;                    // URL gốc
+  title: string;                  // Tiêu đề trang
+  domain: string;                 // Hostname
+  favicon: string;                // Favicon dạng data URL
+  timestamp: number;              // Thời gian chụp (Date.now())
+  captureType: 'auto' | 'manual' | 'deep' | 'clip' | 'readlater';
+  snapshotSize: number;           // Kích thước blob nén (bytes)
+  thumbnailDataUrl: string|null;  // Thumbnail JPEG dạng data URL
+  scrollPosition: number;         // window.scrollY khi chụp
+  tags: string[];                 // Thẻ do người dùng đặt
+  isStarred: boolean;             // Bảo vệ khỏi dọn dẹp tự động
+  isPinned: boolean;              // Ghim lên đầu danh sách
+  isDeleted: boolean;             // Đã xóa mềm (trong thùng rác)
+  deletedAt: number|null;         // Thời gian xóa
+  isReadLater: boolean;           // Trong hàng đợi Đọc sau
+  isRead: boolean;                // Trạng thái đã đọc
+  notes: string;                  // Ghi chú (từ viewer)
+  annotations: Annotation[];     // Chú thích đánh dấu văn bản
+  sessionId: string|null;         // UUID phiên điều hướng
+  parentSnapshotId: string|null;  // Snapshot trước trong luồng
+  collectionIds: string[];        // Thành viên bộ sưu tập
+}
+```
+
+**Indexes:** `url`, `domain`, `timestamp`, `captureType`, `isStarred`, `sessionId`
+
+#### Store: `snapshotData` (keyPath: `id`)
+
+Dữ liệu nhị phân lớn, tách riêng khỏi metadata để tối ưu hiệu năng.
+
+```typescript
+interface SnapshotData {
+  id: string;                   // Cùng ID với metadata
+  domSnapshot: Blob;            // HTML nén gzip
+  deepBundle: Blob|null;        // JSON nén gzip (chỉ deep capture)
+  textContent: string;          // Văn bản thuần cho tìm kiếm (tối đa 50KB)
+}
+```
+
+#### Store: `settings` (keyPath: `key`) — Lưu cài đặt key-value
+
+#### Store: `watchedPages` (keyPath: `id`) — Mục theo dõi thay đổi trang
+
+#### Store: `collections` (keyPath: `id`) — Bộ sưu tập snapshot
+
+#### Store: `autoTagRules` (keyPath: `id`) — Quy tắc gắn thẻ tự động theo domain/URL
+
+#### Store: `sessions` (keyPath: `id`) — Phiên tab đã lưu
+
+### Di chuyển Schema
+
+- **v0 → v1**: Khởi tạo (snapshots, snapshotData, settings)
+- **v1 → v2**: Thêm index `sessionId` cho luồng điều hướng
+- **v2 → v3**: Thêm store `watchedPages`
+- **v3 → v4**: Thêm store `collections` và `autoTagRules`
+- **v4 → v5**: Thêm store `sessions`
+
+---
+
+## Giao thức tin nhắn
+
+Tất cả giao tiếp liên ngữ cảnh sử dụng `chrome.runtime.sendMessage()` với tin nhắn có kiểu từ `MSG` trong `lib/constants.js`.
+
+### Phong bì phản hồi
+
+```javascript
+// Thành công
+{ success: true, data: <kết_quả> }
+
+// Lỗi
+{ success: false, error: "thông báo lỗi" }
+```
+
+### Danh mục tin nhắn (50+ loại)
+
+| Danh mục | Các loại |
+|----------|----------|
+| **Chụp** | `CAPTURE_PAGE`, `CAPTURE_DOM`, `CAPTURE_DEEP`, `CAPTURE_CLIP`, `CAPTURE_STATUS` |
+| **CRUD** | `GET_SNAPSHOTS`, `GET_SNAPSHOT`, `DELETE_SNAPSHOT(S)`, `UPDATE_SNAPSHOT_*` |
+| **Cài đặt** | `GET_SETTINGS`, `UPDATE_SETTINGS`, `TOGGLE_AUTO_CAPTURE` |
+| **Tìm kiếm** | `SEARCH_CONTENT`, `SPOTLIGHT_SEARCH`, `CHECK_URL_SNAPSHOTS` |
+| **Đọc sau** | `MARK_READ_LATER`, `MARK_AS_READ`, `GET_READ_LATER` |
+| **Bộ sưu tập** | `CREATE/UPDATE/DELETE/GET_COLLECTIONS`, `ADD/REMOVE_FROM_COLLECTION` |
+| **AI** | `GENERATE_SUMMARY`, `GET_SUMMARY`, `FETCH_AI_MODELS`, `SPOTLIGHT_AI_CHAT` |
+| **Theo dõi** | `WATCH/UNWATCH_PAGE`, `GET_WATCHED_PAGES`, `UPDATE_WATCH`, `CHECK_WATCHED_NOW` |
+| **Phiên** | `SAVE/GET/DELETE/RESTORE_SESSION` |
+| **Tiến trình** | `GET_PROGRESSIVE_CACHE`, `CLEAR_PROGRESSIVE_CACHE`, `TAB_CLOSING_CAPTURE` |
+| **Ghim/Rác** | `PIN/UNPIN_SNAPSHOT`, `GET_TRASH`, `RESTORE_SNAPSHOT`, `EMPTY_TRASH` |
+| **Sao lưu** | `IMPORT/EXPORT_BACKUP` |
+| **Dashboard** | `GET_DASHBOARD_STATS` |
+
+---
+
+## Pipeline chụp trang
+
+### Chụp tiêu chuẩn (`capture-manager.js`)
+
+```
+1. Kiểm tra điều kiện
+   ├── Tab đang được chụp? → bỏ qua
+   ├── URL bị loại trừ bởi protocol/domain? → bỏ qua
+   ├── Auto-capture: có bản sao gần đây? → bỏ qua
+   └── Quota bộ nhớ vượt? → dọn dẹp tự động hoặc bỏ qua
+
+2. Chụp song song
+   ├── DOM Snapshot (qua tin nhắn content script)
+   │   ├── Clone document.documentElement
+   │   ├── Inline stylesheet → <style>
+   │   ├── Inline hình ảnh dạng base64
+   │   ├── Chụp <canvas> → <img>
+   │   ├── Bảo toàn giá trị form
+   │   ├── Loại bỏ <script>, event handler
+   │   ├── Thêm <base href>
+   │   ├── Trích xuất text (tối đa 50KB)
+   │   └── Trả về { html, textContent, title, url, ... }
+   └── Screenshot (chrome.tabs.captureVisibleTab, JPEG 60%)
+
+3. Xử lý hậu kỳ
+   ├── Kiểm tra giới hạn kích thước (mặc định 15MB)
+   ├── Nén HTML → gzip Blob
+   ├── Tạo thumbnail (320×200 JPEG)
+   ├── Sinh UUID
+   └── Áp dụng quy tắc gắn thẻ tự động
+
+4. Lưu vào IndexedDB (metadata + data song song)
+
+5. Thông báo: badge "OK" + broadcast SNAPSHOT_SAVED
+```
+
+---
+
+## Pipeline chụp sâu
+
+Sử dụng Chrome DevTools Protocol (CDP) qua `chrome.debugger`:
+
+1. Đính kèm debugger → Bật CDP domains (Page, DOM, CSS)
+2. Lấy cây tài nguyên → Thu thập đệ quy TẤT CẢ tài nguyên
+3. Chụp DOM snapshot với 24 CSS computed properties
+4. Chụp MHTML archive
+5. Chụp screenshot chất lượng cao
+6. Hủy đính kèm debugger
+7. Xây dựng HTML có thể xem với tài nguyên inline
+8. Nén và lưu
+
+---
+
+## Chụp tiến trình
+
+`progressive-capture.js` sử dụng `MutationObserver` để chụp dần thay đổi trang:
+
+- Theo dõi DOM mutation, scroll và `visibilitychange`
+- Debounce chụp để tránh snapshot quá mức
+- Chụp trạng thái "cuối cùng" khi người dùng rời trang hoặc đóng tab
+- Gửi dữ liệu qua tin nhắn `TAB_CLOSING_CAPTURE`
+
+---
+
+## Web Clipper {#web-clipper-vi}
+
+`clipper.js` cho phép chụp một phần trang:
+
+- Người dùng kích hoạt chế độ clipper qua popup hoặc menu ngữ cảnh
+- Overlay chọn xuất hiện để chọn vùng trang
+- Chỉ chụp đoạn HTML được chọn
+- Lưu với `captureType: 'clip'`
+
+---
+
+## Kiến trúc tìm kiếm
+
+### Ba lớp tìm kiếm
+
+1. **Tìm kiếm Metadata** — Lọc in-memory qua tiêu đề, URL, domain
+2. **Tìm kiếm toàn văn** — Duyệt cursor IndexedDB qua `textContent`
+3. **Tìm kiếm kết hợp** — Tìm song song metadata + nội dung với loại trùng lặp
+
+### Spotlight Search
+
+Mở rộng tìm kiếm kết hợp với:
+- Giới hạn 20 kết quả với trích xuất snippet (~120 ký tự)
+- Phân loại loại khớp (`'meta'`, `'content'`, `'both'`)
+- Tiền tố `/ai` chuyển sang chế độ AI chat
+
+---
+
+## Tích hợp AI
+
+### Spotlight AI Chat
+
+Khi người dùng gõ `/ai <câu hỏi>` trong Spotlight:
+
+1. Câu hỏi + ngữ cảnh snapshot gần đây gửi đến Google Gemini API
+2. System prompt hướng dẫn AI trả lời theo ngôn ngữ đã cấu hình
+3. Phản hồi AI hiển thị với markdown cơ bản
+4. Snapshot được tham chiếu hiển thị dạng liên kết có thể nhấp
+
+### Tóm tắt AI (Viewer)
+
+- Trích xuất `textContent` từ dữ liệu snapshot
+- Gửi đến Gemini với prompt tóm tắt
+- Tóm tắt được cache trong metadata snapshot
+
+---
+
+## Theo dõi luồng điều hướng
+
+In-memory `Map<tabId, SessionInfo>`:
+- Điều hướng đầu tiên tạo session UUID mới
+- Các điều hướng tiếp theo nối chuỗi qua `parentSnapshotId`
+- Đóng tab xóa dữ liệu session
+- SPA: cửa sổ dedup 3 giây
+
+---
+
+## Theo dõi thay đổi trang {#theo-dõi-thay-đổi-trang-vi}
+
+- Kiểm tra dựa trên alarm mỗi 15 phút
+- So sánh hash FNV-1a để phát hiện thay đổi
+- Tùy chọn giới hạn phạm vi bằng CSS selector
+- Chrome notification khi có thay đổi
+
+---
+
+## Quản lý phiên {#quản-lý-phiên-vi}
+
+- **Lưu**: Ghi tất cả URL, tiêu đề, favicon tab đang mở vào store `sessions`
+- **Khôi phục**: Mở tất cả tab từ phiên đã lưu qua `chrome.tabs.create`
+- **Danh sách/Xóa**: Xem và quản lý phiên đã lưu
+
+---
+
+## Quản lý bộ nhớ {#quản-lý-bộ-nhớ-vi}
+
+### Lớp StorageManager
+
+- `checkAndCleanup()` gọi trước mỗi lần chụp
+- Dựa trên quota: xóa cũ nhất không có sao khi ≥90%
+- Dựa trên thời gian: xóa auto-capture cũ hơn N ngày (chạy mỗi 6 giờ)
+
+### Tự động xóa thùng rác
+
+- Alarm `recall-auto-purge` chạy mỗi 24 giờ
+- Xóa vĩnh viễn snapshot trong thùng rác quá 30 ngày
+
+---
+
+## Đa ngôn ngữ (i18n) {#đa-ngôn-ngữ-i18n-vi}
+
+### Kiến trúc (`lib/i18n.js`)
+
+| Export | Mục đích |
+|--------|----------|
+| `initI18n()` | Lấy ngôn ngữ từ `GET_SETTINGS`, đặt `currentLang` |
+| `t(key)` | Trả về chuỗi đã dịch, fallback sang English |
+| `getLang()` | Trả về `'en'` hoặc `'vi'` |
+| `applyI18n(root)` | Dịch `data-i18n`, `data-i18n-placeholder`, `data-i18n-title` |
+
+### Content Scripts
+
+`spotlight.js` và `you-were-here.js` duy trì từ điển `STRINGS` riêng vì chạy trong ngữ cảnh content script và không thể import ES modules.
+
+---
+
+## Hệ thống sao lưu
+
+`backup-exporter.js` + `lib/zip.js`:
+
+- **Xuất**: Tạo ZIP chứa tất cả snapshot, metadata, cài đặt và bộ sưu tập
+- **Nhập**: Đọc ZIP, xác thực cấu trúc, merge vào database hiện tại
+- Triển khai ZIP không phụ thuộc trong `lib/zip.js`
+
+---
+
+## Mô hình bảo mật
+
+### Cách ly Content Script
+
+- Spotlight và You-Were-Here sử dụng **closed Shadow DOM**
+- Guard injection ngăn khởi tạo trùng lặp
+
+### Xem Snapshot (Viewer)
+
+1. Thẻ `<script>` loại bỏ khi chụp
+2. Thuộc tính `on*` bị xóa
+3. Sanitize bằng DOMParser trong viewer
+4. Iframe sandbox (`sandbox.html`) ngăn thực thi script
+
+---
+
+## Hệ thống theme
+
+- `initTheme()`: localStorage → tùy chọn hệ thống → thuộc tính `data-theme`
+- `toggleTheme()`: Đảo tối ↔ sáng, lưu vào localStorage
+- Bảng màu tùy chỉnh: cài đặt `themeColor` (default, ocean, forest, sunset, midnight, rose)
+- CSS sử dụng `[data-theme="dark"]` selectors
+
+---
+
+## Cân nhắc hiệu năng
+
+- **Tách metadata/data**: Truy vấn danh sách chỉ đọc metadata nhẹ
+- **Tìm kiếm dựa trên cursor**: Tránh tải tất cả dữ liệu vào bộ nhớ
+- **Truy cập DB trực tiếp**: Viewer và diff bỏ qua service worker
+- **Nén gzip**: Giảm 60-80% kích thước
+- **Chụp song song**: DOM snapshot và screenshot qua `Promise.allSettled`
+- **Thumbnail dạng data URL**: Loại bỏ vấn đề tuần tự hóa Blob
+
+---
+
+## Quyết định thiết kế
+
+### Tại sao không có Build System?
+JS thuần với ES Modules — Chrome hỗ trợ gốc. Không có sự phức tạp build.
+
+### Tại sao IndexedDB thay vì chrome.storage?
+Hỗ trợ Blob, index, cursor, transaction. `chrome.storage.local` có nhiều hạn chế.
+
+### Tại sao dùng Data URL cho Thumbnail?
+Tuần tự hóa tin nhắn Chrome không truyền được Blob. Data URL "hoạt động" ở mọi nơi.
+
+### Tại sao dùng FNV-1a cho Theo dõi?
+Nhanh, phi mật mã — chỉ cần phát hiện thay đổi, không cần bảo mật.
+
+### Tại sao dùng Shadow DOM cho Content Scripts?
+Cách ly CSS/JS hoàn toàn hai chiều giữa UI tiện ích và trang host.
+
+---
+---
+
+# 🇬🇧 English
+
+Deep-dive into the internal architecture, data model, design decisions, and code organization of the Recall extension.
 
 ---
 
@@ -12,10 +499,16 @@ This document provides a deep-dive into the internal architecture, data model, d
 - [Message Protocol](#message-protocol)
 - [Capture Pipeline](#capture-pipeline)
 - [Deep Capture Pipeline](#deep-capture-pipeline)
+- [Progressive Capture](#progressive-capture)
+- [Web Clipper](#web-clipper)
 - [Search Architecture](#search-architecture)
+- [AI Integration](#ai-integration)
 - [Navigation Flow Tracking](#navigation-flow-tracking)
 - [Page Change Watching](#page-change-watching)
+- [Session Management](#session-management)
 - [Storage Management](#storage-management)
+- [Internationalization (i18n)](#internationalization-i18n)
+- [Backup System](#backup-system)
 - [Security Model](#security-model)
 - [Theme System](#theme-system)
 - [Performance Considerations](#performance-considerations)
@@ -28,45 +521,49 @@ This document provides a deep-dive into the internal architecture, data model, d
 Recall operates across four distinct Chrome extension execution contexts, communicating primarily through Chrome's message passing API:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Service Worker (Background)                  │
-│                                                                  │
-│  ┌────────────────┐  ┌─────────────────┐  ┌──────────────────┐  │
-│  │ service-worker  │  │ capture-manager │  │  deep-capture    │  │
-│  │ .js             │  │ .js             │  │  .js             │  │
-│  │                 │  │                 │  │                  │  │
-│  │ - Message router│  │ - DOM capture   │  │ - CDP commands   │  │
-│  │ - Nav tracking  │  │ - Screenshot    │  │ - Resource fetch │  │
-│  │ - Alarms        │  │ - Thumbnail     │  │ - MHTML capture  │  │
-│  │ - Context menus │  │ - Compression   │  │ - Bundle build   │  │
-│  │ - Commands      │  │ - Export        │  │ - HTML rebuild   │  │
-│  └────────┬───────┘  └────────┬────────┘  └────────┬─────────┘  │
-│           │                   │                     │            │
-│  ┌────────┴───────┐  ┌───────┴─────────┐                        │
-│  │ watcher.js     │  │ storage-manager │                        │
-│  │                │  │ .js             │                        │
-│  │ - Page fetch   │  │ - Quota check   │                        │
-│  │ - FNV-1a hash  │  │ - Auto cleanup  │                        │
-│  │ - Change detect│  │ - Time cleanup  │                        │
-│  │ - Notifications│  │ - Usage stats   │                        │
-│  └────────────────┘  └─────────────────┘                        │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │
-              chrome.runtime.sendMessage / onMessage
-                            │
-        ┌───────────────────┼───────────────────────┐
-        │                   │                       │
-        ▼                   ▼                       ▼
-┌──────────────┐  ┌──────────────────┐  ┌─────────────────────┐
-│Content Scripts│  │Extension Pages   │  │IndexedDB (RecallDB) │
-│              │  │                  │  │                     │
-│ snapshot.js  │  │ popup/           │  │ snapshots           │
-│ spotlight.js │  │ sidepanel/       │  │ snapshotData        │
-│ you-were-    │  │ manager/         │  │ settings            │
-│ here.js      │  │ viewer/          │  │ watchedPages        │
-│              │  │ diff/            │  │                     │
-│              │  │ settings/        │  │                     │
-└──────────────┘  └──────────────────┘  └─────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                     Service Worker (Background)                   │
+│                                                                   │
+│  ┌────────────────┐ ┌──────────────────┐ ┌───────────────────┐   │
+│  │service-worker   │ │capture-manager   │ │deep-capture       │   │
+│  │.js              │ │.js               │ │.js                │   │
+│  │                 │ │                  │ │                   │   │
+│  │- Message router │ │- DOM capture     │ │- CDP commands     │   │
+│  │- Nav tracking   │ │- Screenshot      │ │- Resource fetch   │   │
+│  │- AI chat/summary│ │- Thumbnail       │ │- MHTML capture    │   │
+│  │- Sessions       │ │- Compression     │ │- Bundle build     │   │
+│  │- Auto-tagging   │ │- Export          │ │- HTML rebuild     │   │
+│  │- Alarms         │ │                  │ │                   │   │
+│  │- Context menus  │ │                  │ │                   │   │
+│  └────────┬────────┘ └────────┬─────────┘ └────────┬──────────┘  │
+│           │                   │                     │             │
+│  ┌────────┴────────┐ ┌───────┴─────────┐ ┌────────┴──────────┐  │
+│  │watcher.js       │ │storage-manager  │ │backup-exporter    │  │
+│  │                 │ │.js              │ │.js                │  │
+│  │- Page fetch     │ │- Quota check    │ │- ZIP creation     │  │
+│  │- FNV-1a hash    │ │- Auto cleanup   │ │- Import/export    │  │
+│  │- Change detect  │ │- Time cleanup   │ │- Data migration   │  │
+│  │- Notifications  │ │- Usage stats    │ │                   │  │
+│  └─────────────────┘ └─────────────────┘ └───────────────────┘  │
+└────────────────────────────┬──────────────────────────────────────┘
+                             │
+               chrome.runtime.sendMessage / onMessage
+                             │
+         ┌───────────────────┼───────────────────────┐
+         │                   │                       │
+         ▼                   ▼                       ▼
+┌────────────────┐  ┌──────────────────┐  ┌─────────────────────┐
+│Content Scripts  │  │Extension Pages   │  │IndexedDB (RecallDB) │
+│                │  │                  │  │  v5 — 7 stores      │
+│ snapshot.js    │  │ popup/           │  │                     │
+│ spotlight.js   │  │ sidepanel/       │  │ snapshots           │
+│ clipper.js     │  │ manager/         │  │ snapshotData        │
+│ progressive-   │  │ viewer/          │  │ settings            │
+│  capture.js    │  │ diff/            │  │ watchedPages        │
+│ you-were-      │  │ dashboard/       │  │ collections         │
+│  here.js       │  │ settings/        │  │ autoTagRules        │
+│                │  │                  │  │ sessions            │
+└────────────────┘  └──────────────────┘  └─────────────────────┘
 ```
 
 ---
@@ -75,195 +572,149 @@ Recall operates across four distinct Chrome extension execution contexts, commun
 
 ### 1. Service Worker (`background/`)
 
-The service worker is the central hub. It runs as a **Manifest V3 module service worker** (`"type": "module"`) and handles:
+The service worker is the central hub. It runs as a **Manifest V3 module service worker** (`"type": "module"`):
 
-- **Message routing**: All `chrome.runtime.onMessage` handlers dispatch to the `handleMessage()` switch in `service-worker.js:374`
-- **Auto-capture**: Listens to `webNavigation.onCompleted` and `webNavigation.onHistoryStateUpdated` events
-- **Navigation flow tracking**: Maintains an in-memory `Map<tabId, {sessionId, lastSnapshotId, lastUrl}>` to link sequential captures into browsing sessions
-- **Alarms**: Two periodic alarms:
+- **Message routing**: All `chrome.runtime.onMessage` handlers dispatch to `handleMessage()` switch
+- **Auto-capture**: Listens to `webNavigation.onCompleted` and `webNavigation.onHistoryStateUpdated`
+- **AI integration**: Handles `SPOTLIGHT_AI_CHAT` and `GENERATE_SUMMARY` using Google Gemini API
+- **Session management**: Save/restore tab sessions with `SAVE_SESSION` / `RESTORE_SESSION`
+- **Collections & auto-tagging**: CRUD for collections and auto-tag rules
+- **Trash / soft delete**: Moves snapshots to trash with 30-day auto-purge
+- **Navigation flow tracking**: In-memory `Map<tabId, SessionInfo>`
+- **Alarms**:
   - `recall-time-cleanup` (every 6 hours): deletes old auto-captures
-  - `recall-page-watch` (every 15 minutes): checks watched pages for changes
-- **Context menus**: Creates 4 context menu items on install
-- **Keyboard commands**: Handles `capture-page`, `open-manager`, `toggle-spotlight`
-
-**Key file**: `service-worker.js` (670 lines)
+  - `recall-page-watch` (every 15 min): checks watched pages
+  - `recall-auto-purge` (every 24 hours): empties trash older than 30 days
 
 ### 2. Content Scripts (`content/`)
 
-Three content scripts are injected into every `http://` and `https://` page:
+Five content scripts are injected into every `http://` and `https://` page:
 
-| Script | Size | Purpose | Isolation |
-|--------|------|---------|-----------|
-| `snapshot.js` | 400 lines | DOM cloning and serialization | IIFE with `window.__recallSnapshotInjected` guard |
-| `spotlight.js` | 871 lines | Spotlight search overlay | Shadow DOM (closed) |
-| `you-were-here.js` | 237 lines | Revisit notification bar | Shadow DOM (closed) |
+| Script | Purpose | Isolation |
+|--------|---------|-----------|
+| `snapshot.js` | DOM cloning and serialization | IIFE with `window.__recallSnapshotInjected` guard |
+| `spotlight.js` | Spotlight search overlay + AI chat | Shadow DOM (closed) |
+| `clipper.js` | Web clipper for selecting regions | IIFE with injection guard |
+| `progressive-capture.js` | MutationObserver-based incremental capture | IIFE with injection guard |
+| `you-were-here.js` | Revisit notification bar | Shadow DOM (closed) |
 
-All three use injection guards (`window.__recallXxxInjected`) to prevent duplicate initialization. Spotlight and You-Were-Here use **closed Shadow DOM** to ensure complete CSS isolation from the host page.
+### 3. Extension Pages
 
-### 3. Extension Pages (`popup/`, `sidepanel/`, `manager/`, `viewer/`, `diff/`, `settings/`)
-
-Each page is a standalone HTML+CSS+JS bundle. They communicate with the service worker via messages and can also access IndexedDB directly (viewer and diff do this for performance).
+| Page | Purpose |
+|------|---------|
+| `popup/` | Toolbar popup with quick actions |
+| `sidepanel/` | Chrome side panel snapshot list |
+| `manager/` | Full-page snapshot management (grid/list/flow/watch) |
+| `viewer/` | Snapshot rendering with notes, annotations, AI summary |
+| `diff/` | Side-by-side page comparison |
+| `dashboard/` | Analytics and statistics |
+| `settings/` | Configuration interface |
 
 ### 4. Shared Libraries (`lib/`)
 
-ES modules imported by both the service worker and extension pages:
-
-| Module | Lines | Exports |
-|--------|-------|---------|
-| `constants.js` | 100 | `DB_NAME`, `DB_VERSION`, `STORE_*`, `MSG`, `DEFAULT_SETTINGS`, `BADGE_COLORS`, `CAPTURE_*` |
-| `db.js` | 684 | Full IndexedDB CRUD for all 4 stores + search + flows |
-| `utils.js` | 225 | `generateId`, `getDomain`, `formatBytes`, `timeAgo`, `compressString`, `decompressToString`, `debounce`, `throttle`, `shouldExcludeUrl`, `createThumbnail` |
-| `theme.js` | 79 | `initTheme`, `createThemeToggle` |
-| `storage-manager.js` | 171 | `StorageManager` class (singleton) |
+| Module | Purpose |
+|--------|---------|
+| `constants.js` | DB config, 50+ message types, default settings |
+| `db.js` | IndexedDB wrapper for 7 stores |
+| `utils.js` | UUID, formatting, compression, thumbnails |
+| `i18n.js` | Centralized en/vi translations, DOM translation |
+| `theme.js` | Dark/light mode + 6 custom color palettes |
+| `dialog.js` + `dialog.css` | Custom modal dialogs (confirm, alert) |
+| `storage-manager.js` | Quota tracking & auto-cleanup |
+| `zip.js` | ZIP archive creation (no dependencies) |
 
 ---
 
 ## Data Model
 
-### IndexedDB Schema: `RecallDB` (version 3)
+### IndexedDB Schema: `RecallDB` (version 5)
 
 #### Store: `snapshots` (keyPath: `id`)
 
-Snapshot metadata. Kept lightweight for fast listing and search.
-
 ```typescript
 interface SnapshotMetadata {
-  id: string;                    // UUID v4
-  url: string;                   // Original page URL
-  title: string;                 // Page title
-  domain: string;                // Hostname extracted from URL
-  favicon: string;               // Favicon as data URL or URL
-  timestamp: number;             // Capture time (Date.now())
-  captureType: 'auto' | 'manual' | 'deep';
-  snapshotSize: number;          // Compressed blob size in bytes
-  thumbnailDataUrl: string|null; // JPEG thumbnail as data URL string
-  scrollPosition: number;        // window.scrollY at capture time
-  tags: string[];                // User-defined tags
-  isStarred: boolean;            // Protected from auto-cleanup
-  notes: string;                 // User notes (from viewer)
-  annotations: Annotation[];    // Text highlight annotations
-  sessionId: string|null;        // Navigation flow session UUID
-  parentSnapshotId: string|null; // Previous snapshot in flow
+  id: string;                     // UUID v4
+  url: string;                    // Original page URL
+  title: string;                  // Page title
+  domain: string;                 // Hostname
+  favicon: string;                // Favicon as data URL
+  timestamp: number;              // Capture time (Date.now())
+  captureType: 'auto' | 'manual' | 'deep' | 'clip' | 'readlater';
+  snapshotSize: number;           // Compressed blob size in bytes
+  thumbnailDataUrl: string|null;  // JPEG thumbnail as data URL
+  scrollPosition: number;         // window.scrollY at capture
+  tags: string[];                 // User-defined tags
+  isStarred: boolean;             // Protected from auto-cleanup
+  isPinned: boolean;              // Pinned to top of lists
+  isDeleted: boolean;             // Soft-deleted (in trash)
+  deletedAt: number|null;         // Deletion timestamp
+  isReadLater: boolean;           // In Read Later queue
+  isRead: boolean;                // Read Later read status
+  notes: string;                  // User notes (from viewer)
+  annotations: Annotation[];     // Text highlight annotations
+  sessionId: string|null;         // Navigation flow session UUID
+  parentSnapshotId: string|null;  // Previous snapshot in flow
+  collectionIds: string[];        // Collection memberships
 }
 ```
 
-**Indexes:**
-- `url` (non-unique) - Duplicate detection, URL-based queries
-- `domain` (non-unique) - Domain filtering
-- `timestamp` (non-unique) - Chronological sorting
-- `captureType` (non-unique) - Filter by capture method
-- `isStarred` (non-unique) - Filter starred items
-- `sessionId` (non-unique) - Navigation flow queries
-
 #### Store: `snapshotData` (keyPath: `id`)
-
-Large binary data, separated from metadata for performance.
 
 ```typescript
 interface SnapshotData {
   id: string;                   // Same ID as metadata
   domSnapshot: Blob;            // Gzip-compressed HTML
   deepBundle: Blob|null;        // Gzip-compressed JSON (deep capture only)
-  textContent: string;          // Plain text for full-text search (max 50KB)
+  textContent: string;          // Plain text for search (max 50KB)
 }
 ```
 
-#### Store: `settings` (keyPath: `key`)
+#### Other Stores
 
-Key-value settings store.
+- `settings` — Key-value settings
+- `watchedPages` — Page change monitoring entries
+- `collections` — Named snapshot groups
+- `autoTagRules` — Domain/URL-based auto-tagging rules
+- `sessions` — Saved tab sessions
 
-```typescript
-interface SettingEntry {
-  key: string;    // Setting name (e.g., 'autoCapture')
-  value: any;     // Setting value
-}
-```
+### Schema Migrations
 
-#### Store: `watchedPages` (keyPath: `id`) [Added in v3]
-
-Page change monitoring entries.
-
-```typescript
-interface WatchedPage {
-  id: string;                       // UUID
-  url: string;                      // URL to monitor
-  title: string;                    // Page title
-  domain: string;                   // Hostname
-  intervalMinutes: number;          // Check interval (default: 60)
-  isActive: boolean;                // Whether monitoring is active
-  lastChecked: number|null;         // Last check timestamp
-  lastContentHash: string|null;     // FNV-1a hash of extracted text
-  lastTextContent: string|null;     // Last extracted text (max 30KB)
-  changeCount: number;              // Total changes detected
-  lastChangedAt: number|null;       // Last change timestamp
-  createdAt: number;                // Entry creation timestamp
-  cssSelector: string|null;         // Optional CSS selector to scope monitoring
-  notifyOnChange: boolean;          // Send Chrome notification on change
-  lastError: string|null;           // Last fetch error message
-  lastChangePreview: string|null;   // First 200 chars of changed content
-  previousContentHash: string|null; // Hash before last change
-}
-```
-
-**Indexes:**
-- `url` (unique) - Prevent duplicate watches
-- `isActive` (non-unique) - Filter active watches
-- `lastChecked` (non-unique) - Find pages due for checking
-- `domain` (non-unique) - Domain grouping
-
-### Schema Migration
-
-The database uses versioned upgrades in `db.js:24-58`:
-
-- **v0 → v1**: Initial schema (snapshots, snapshotData, settings stores)
-- **v1 → v2**: Added `sessionId` index to snapshots for navigation flow tracking
-- **v2 → v3**: Added `watchedPages` store for page change monitoring
+- **v0 → v1**: Initial (snapshots, snapshotData, settings)
+- **v1 → v2**: Added `sessionId` index
+- **v2 → v3**: Added `watchedPages`
+- **v3 → v4**: Added `collections` and `autoTagRules`
+- **v4 → v5**: Added `sessions`
 
 ---
 
 ## Message Protocol
 
-All inter-context communication uses `chrome.runtime.sendMessage()` with a typed message protocol. Message types are defined in `lib/constants.js` as the `MSG` object.
-
-### Message Flow
-
-```
-Sender                          Service Worker                    Response
-──────                          ──────────────                    ────────
-{type: MSG.CAPTURE_PAGE}    →   captureTab()                  →   metadata
-{type: MSG.CAPTURE_DEEP}    →   deepCaptureTab()              →   metadata
-{type: MSG.GET_SNAPSHOTS}   →   db.getAllSnapshots()           →   metadata[]
-{type: MSG.GET_SNAPSHOT}    →   db.getSnapshot(id)             →   metadata
-{type: MSG.DELETE_SNAPSHOT}  →   db.deleteSnapshot(id)         →   {deleted: id}
-{type: MSG.GET_SETTINGS}    →   db.getAllSettings()            →   settings
-{type: MSG.UPDATE_SETTINGS} →   db.saveSettings(obj)          →   {updated}
-{type: MSG.SPOTLIGHT_SEARCH}→   fulltext search + snippets     →   results[]
-{type: MSG.WATCH_PAGE}      →   watcher.watchPage(opts)       →   entry
-{type: MSG.CHECK_URL_SNAPSHOTS}→ db.getSnapshotsByUrl()       →   {snapshots, count}
-```
+All inter-context communication uses `chrome.runtime.sendMessage()` with typed messages.
 
 ### Response Envelope
 
-All responses are wrapped in a standard envelope:
-
 ```javascript
-// Success
-{ success: true, data: <result> }
-
-// Error
-{ success: false, error: "error message" }
+{ success: true, data: <result> }    // Success
+{ success: false, error: "message" } // Error
 ```
 
-### Broadcast Events
+### Message Categories (50+ types)
 
-The service worker broadcasts events to all listeners (popup, sidepanel, manager):
-
-```javascript
-{ type: MSG.SNAPSHOT_SAVED,   snapshot: metadata }
-{ type: MSG.SNAPSHOT_DELETED, id: string }
-{ type: MSG.SNAPSHOT_DELETED, ids: string[] }
-{ type: MSG.WATCHED_PAGE_CHANGED, entry: watchedPage }
-```
+| Category | Types |
+|----------|-------|
+| **Capture** | `CAPTURE_PAGE`, `CAPTURE_DOM`, `CAPTURE_DEEP`, `CAPTURE_CLIP`, `CAPTURE_STATUS` |
+| **CRUD** | `GET_SNAPSHOTS`, `GET_SNAPSHOT`, `DELETE_SNAPSHOT(S)`, `UPDATE_SNAPSHOT_*` |
+| **Settings** | `GET_SETTINGS`, `UPDATE_SETTINGS`, `TOGGLE_AUTO_CAPTURE` |
+| **Search** | `SEARCH_CONTENT`, `SPOTLIGHT_SEARCH`, `CHECK_URL_SNAPSHOTS` |
+| **Read Later** | `MARK_READ_LATER`, `MARK_AS_READ`, `GET_READ_LATER` |
+| **Collections** | `CREATE/UPDATE/DELETE/GET_COLLECTIONS`, `ADD/REMOVE_FROM_COLLECTION` |
+| **AI** | `GENERATE_SUMMARY`, `GET_SUMMARY`, `FETCH_AI_MODELS`, `SPOTLIGHT_AI_CHAT` |
+| **Watch** | `WATCH/UNWATCH_PAGE`, `GET_WATCHED_PAGES`, `UPDATE_WATCH`, `CHECK_WATCHED_NOW` |
+| **Sessions** | `SAVE/GET/DELETE/RESTORE_SESSION` |
+| **Progressive** | `GET_PROGRESSIVE_CACHE`, `CLEAR_PROGRESSIVE_CACHE`, `TAB_CLOSING_CAPTURE` |
+| **Pin / Trash** | `PIN/UNPIN_SNAPSHOT`, `GET_TRASH`, `RESTORE_SNAPSHOT`, `EMPTY_TRASH` |
+| **Backup** | `IMPORT/EXPORT_BACKUP` |
+| **Dashboard** | `GET_DASHBOARD_STATS` |
 
 ---
 
@@ -272,369 +723,144 @@ The service worker broadcasts events to all listeners (popup, sidepanel, manager
 ### Standard Capture (`capture-manager.js`)
 
 ```
-1. Check guards
-   ├── Tab already being captured? → skip
-   ├── URL excluded by protocol/domain? → skip
-   ├── Auto-capture: recent duplicate exists? → skip
-   └── Storage quota exceeded? → auto-cleanup or skip
-
-2. Parallel capture
-   ├── DOM Snapshot (via content script message)
-   │   ├── Clone document.documentElement
-   │   ├── Inline <link rel="stylesheet"> → <style>
-   │   ├── Inline images as base64 data URIs
-   │   ├── Capture <canvas> → <img>
-   │   ├── Preserve form input values
-   │   ├── Remove <script>, <noscript>, event handlers
-   │   ├── Add <base href> for relative URLs
-   │   ├── Extract plain text (innerText, max 50KB)
-   │   └── Return { html, textContent, title, url, ... }
-   │
-   └── Screenshot (chrome.tabs.captureVisibleTab)
-       └── JPEG at 60% quality
-
-3. Post-processing
-   ├── Check size limit (default 15MB)
-   ├── Compress HTML → gzip Blob (CompressionStream)
-   ├── Create thumbnail (OffscreenCanvas, 320x200, JPEG 60%)
-   │   └── Convert to data URL string (not Blob)
-   └── Generate UUID
-
+1. Check guards (duplicate, excluded, quota)
+2. Parallel: DOM Snapshot + Screenshot
+3. Post-process: compress, thumbnail, UUID, auto-tag
 4. Save to IndexedDB
-   ├── Metadata → snapshots store
-   └── Compressed HTML + textContent → snapshotData store
-   (both in parallel)
-
-5. Notify
-   ├── Badge: "OK" (green, 2s)
-   └── Broadcast: SNAPSHOT_SAVED
+5. Badge "OK" + broadcast SNAPSHOT_SAVED
 ```
-
-### Key Design: Thumbnails as Data URL Strings
-
-Thumbnails are stored as base64 data URL strings (not Blobs) because Blobs cannot survive Chrome's message serialization between the service worker and extension pages. The `migrateThumbnail()` function in `service-worker.js:358` handles legacy Blob-based thumbnails by converting them on read.
 
 ---
 
 ## Deep Capture Pipeline
 
-Deep Capture (`deep-capture.js`) uses the Chrome DevTools Protocol (CDP) via `chrome.debugger` for comprehensive page archival:
+Uses CDP via `chrome.debugger`:
 
-```
-1. Attach debugger (CDP v1.3)
-2. Enable CDP domains: Page, DOM, CSS
-3. Get resource tree (Page.getResourceTree)
-   └── Recursively collect ALL resources from all frames
-       ├── Document HTML (via Page.getResourceContent)
-       ├── Stylesheets
-       ├── Scripts
-       ├── Images
-       ├── Fonts
-       └── Other sub-resources
-4. Capture DOM snapshot with computed styles
-   └── DOMSnapshot.captureSnapshot with 24 CSS properties
-5. Capture MHTML archive (Page.captureSnapshot format:'mhtml')
-6. Capture high-quality screenshot (Page.captureScreenshot)
-7. Detach debugger
-8. Build deep capture bundle (JSON)
-   ├── Resource metadata + contents (URL → content map)
-   ├── DOM snapshot with computed styles
-   ├── MHTML data
-   └── Screenshot data
-9. Build viewable HTML
-   ├── Start with main document HTML
-   ├── Inline CSS: replace <link> with <style>
-   ├── Inline images as base64 data URIs
-   ├── Remove scripts and event handlers
-   └── Add <base> tag and metadata
-10. Compress both bundle (JSON) and viewable HTML (gzip)
-11. Save to IndexedDB (same schema as standard capture)
-```
+1. Attach debugger → Enable CDP domains
+2. Get resource tree → Collect ALL resources
+3. Capture DOM snapshot with computed styles
+4. Capture MHTML archive + screenshot
+5. Detach debugger
+6. Build viewable HTML, compress, save
 
-**Resource Collection**: The `collectResources()` function recursively traverses the frame tree, fetching each resource's content via `Page.getResourceContent`. Frame documents are fetched explicitly since `getResourceTree` only lists sub-resources, not the frame's own document.
+---
+
+## Progressive Capture
+
+`progressive-capture.js` — `MutationObserver` for incremental capture:
+- Watches DOM mutations, scroll, `visibilitychange`
+- Debounced captures
+- Final capture on tab close via `TAB_CLOSING_CAPTURE`
+
+---
+
+## Web Clipper
+
+`clipper.js` — Partial page capture:
+- Selection overlay for choosing regions
+- Captures only selected HTML fragment
+- Saves with `captureType: 'clip'`
 
 ---
 
 ## Search Architecture
 
-### Three Search Layers
+Three layers: metadata search, full-text content search, combined search.
+Spotlight extends with 20-result limit, snippets, and `/ai` mode switch.
 
-1. **Metadata Search** (`db.searchSnapshots`)
-   - In-memory filter over all snapshots
-   - Matches against `title`, `url`, `domain` (case-insensitive includes)
-   - Fast but limited to metadata fields
+---
 
-2. **Full-Text Content Search** (`db.searchContentForIds`)
-   - IndexedDB cursor iteration over `snapshotData` store
-   - Matches against `textContent` field (case-insensitive includes)
-   - Returns only matching IDs (not full records)
+## AI Integration
 
-3. **Combined Search** (`db.searchSnapshotsFullText`)
-   - Runs metadata + content search in parallel
-   - Merges and deduplicates results
-   - Returns full metadata objects sorted by timestamp
-
-### Spotlight Search (`service-worker.js:513`)
-
-The Spotlight search handler extends combined search with:
-- Result limit (default 20)
-- **Context snippet extraction**: For content matches, reads the `textContent` from `snapshotData`, finds the match position, and extracts ~120 chars of surrounding context
-- Match type classification: `'meta'`, `'content'`, or `'both'`
-- Includes thumbnails and favicons for rich UI
+- **Spotlight AI Chat**: `/ai <query>` → Gemini API with snapshot context, language-aware
+- **AI Summary**: `textContent` → Gemini summarization, cached in metadata
 
 ---
 
 ## Navigation Flow Tracking
 
-### In-Memory Session Map
-
-The service worker maintains a `Map<tabId, SessionInfo>` (`service-worker.js:24`):
-
-```javascript
-tabSessions: Map<number, {
-  sessionId: string,        // UUID shared by all captures in this tab
-  lastSnapshotId: string,   // Most recent capture (becomes parentSnapshotId)
-  lastUrl: string,          // Last captured URL (dedup check)
-  lastCaptureTime: number   // Timestamp of last capture (SPA dedup)
-}>
-```
-
-### Session Lifecycle
-
-1. **First navigation in tab**: Creates new session with fresh UUID
-2. **Subsequent navigations**: Reuses session, chains snapshots via `parentSnapshotId`
-3. **Tab close**: Session data deleted (`tabs.onRemoved`)
-
-### SPA Deduplication
-
-For `webNavigation.onHistoryStateUpdated` events (SPA route changes):
-- 3-second dedup window to avoid double-captures from rapid pushState calls
-- Additional check against the settings-configured `duplicateWindowMinutes`
-- Shorter capture delay (1s instead of 2s) since SPA content is already partially loaded
-
-### Flow Queries
-
-`db.getNavigationFlows()` groups snapshots by `sessionId`, filters to sessions with 2+ snapshots, and returns ordered flow objects. The viewer provides prev/next navigation within a flow.
+In-memory `Map<tabId, SessionInfo>`:
+- First nav creates session UUID
+- Subsequent navs chain via `parentSnapshotId`
+- SPA: 3s dedup window
 
 ---
 
 ## Page Change Watching
 
-### Architecture
+- Alarm-based checking every 15 min
+- FNV-1a hash comparison
+- Optional CSS selector scoping
+- Chrome notifications on change
 
-```
-Alarm (every 15 min)
-    │
-    ▼
-checkAllDuePages()
-    │
-    ├── Get active watches where lastChecked + interval < now
-    │
-    ├── For each due page:
-    │   ├── fetchPage(url) with 30s timeout
-    │   ├── extractTextForSelector(html, cssSelector)
-    │   │   ├── If CSS selector: attempt regex-based extraction
-    │   │   └── If no selector: strip tags, normalize whitespace
-    │   ├── hashText(text) using FNV-1a
-    │   ├── Compare with lastContentHash
-    │   │   ├── Different → changed! Update changeCount, notify
-    │   │   └── Same → no change, update lastChecked
-    │   └── Save updates to IndexedDB
-    │
-    └── Send Chrome notifications for changes
-```
+---
 
-### FNV-1a Hashing
+## Session Management
 
-Uses the FNV-1a 32-bit hash algorithm for fast, non-cryptographic comparison:
-
-```javascript
-function hashText(str) {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < str.length; i++) {
-    hash ^= str.charCodeAt(i);
-    hash = (hash * 0x01000193) >>> 0;
-  }
-  return hash.toString(16);
-}
-```
-
-This is chosen over crypto hashes for speed — we only need change detection, not security.
-
-### CSS Selector Extraction
-
-Since the service worker lacks DOM APIs, selector-based extraction uses regex matching:
-- `#id` selectors: Regex finds the element and extracts a 50KB chunk
-- Other selectors: Falls back to full-page text extraction
-- This is documented as a best-effort approach
+- Save/restore/list/delete tab sessions
 
 ---
 
 ## Storage Management
 
-### StorageManager Class (`lib/storage-manager.js`)
+- `checkAndCleanup()` before every capture
+- Quota-based + time-based cleanup
+- Trash auto-purge (30 days)
 
-Singleton pattern managing storage quota:
+---
 
-```
-┌─────────────────────────────────────────┐
-│ checkAndCleanup() - called before       │
-│ every capture                           │
-│                                         │
-│ 1. getUsageStats()                      │
-│    ├── totalSize (sum of snapshotSize)  │
-│    ├── count                            │
-│    ├── maxBytes (from settings)         │
-│    ├── usagePercent                     │
-│    ├── isWarning (≥80%)                 │
-│    ├── isCritical (≥90%)               │
-│    └── isFull (≥100%)                   │
-│                                         │
-│ 2. If critical → autoCleanup()          │
-│    ├── Get oldest non-starred snapshots │
-│    ├── Delete until below 80% capacity  │
-│    └── Return count of deleted          │
-│                                         │
-│ 3. If still full after cleanup → reject │
-└─────────────────────────────────────────┘
-```
+## Internationalization (i18n)
 
-### Time-Based Cleanup
+| Export | Purpose |
+|--------|---------|
+| `initI18n()` | Fetches language, sets `currentLang` |
+| `t(key)` | Translated string, English fallback |
+| `getLang()` | Returns `'en'` or `'vi'` |
+| `applyI18n(root)` | Translates `data-i18n` attributes |
 
-Separate from quota-based cleanup. Runs every 6 hours via alarm:
-- Only deletes auto-captured, non-starred snapshots
-- Deletes snapshots older than `autoCleanupDays` (0 = disabled)
-- Manual captures and starred snapshots are always preserved
+Content scripts maintain their own `STRINGS` dictionaries.
 
-### Settings Cache
+---
 
-Settings are cached in the `StorageManager` instance to avoid repeated IndexedDB reads. The cache is invalidated via `invalidateCache()` when settings change.
+## Backup System
+
+`backup-exporter.js` + `lib/zip.js`: Export/import all data as ZIP.
 
 ---
 
 ## Security Model
 
-### Content Script Isolation
-
-- **Spotlight** and **You-Were-Here** use **closed Shadow DOM** to prevent host page CSS from affecting the UI and to prevent the host page from accessing the overlay's internals
-- Content scripts use `window.__recallXxxInjected` guards to prevent duplicate injection
-
-### Snapshot Rendering (Viewer)
-
-The viewer uses multiple layers of security:
-
-1. **Script removal**: All `<script>` tags stripped during capture (`snapshot.js:235`)
-2. **Event handler removal**: All `on*` attributes removed (`snapshot.js:241`)
-3. **`<noscript>` removal**: Removed since scripts are stripped (`snapshot.js:256`)
-4. **DOMParser sanitization**: Viewer parses HTML with DOMParser before rendering
-5. **Sandboxed iframe**: Rendered in `sandbox.html` which has `sandbox` attribute, preventing script execution even if scripts somehow survive sanitization
-6. **CSP**: The sandbox page has no script permissions
-
-### Deep Capture Security
-
-Deep capture uses `chrome.debugger` which shows a "debugging" banner to the user. The extension must have the `debugger` permission. Resource content is stored as-is but rendered through the same sanitization pipeline.
+- Closed Shadow DOM for content scripts
+- `<script>` removal + `on*` stripping during capture
+- DOMParser sanitization + sandboxed iframe in viewer
 
 ---
 
 ## Theme System
 
-### Implementation (`lib/theme.js`)
-
-```
-initTheme()
-├── Check localStorage for 'recall-theme'
-├── If not set: detect system preference via prefers-color-scheme
-├── Apply theme via data-theme attribute on <html>
-└── If auto-detected: listen for system preference changes
-
-toggleTheme()
-├── Read current data-theme
-├── Flip dark ↔ light
-├── Apply to <html>
-└── Save to localStorage
-```
-
-All CSS files use `[data-theme="dark"]` selectors for dark mode styles. The theme toggle button is injected via `createThemeToggle(container)`.
+- localStorage → system preference → `data-theme` attribute
+- 6 color palettes
 
 ---
 
 ## Performance Considerations
 
-### Thumbnail Format
-
-Thumbnails are stored as data URL strings (base64-encoded JPEG) rather than Blobs. This costs ~33% more storage but eliminates serialization failures when passing thumbnails through Chrome's message API. A migration function handles legacy Blob thumbnails.
-
-### IndexedDB Access Patterns
-
-- **Metadata and data separation**: The `snapshots` and `snapshotData` stores are separate so that listing operations only read lightweight metadata, not multi-MB HTML blobs
-- **Cursor-based content search**: Full-text search iterates via IndexedDB cursor to avoid loading all data into memory at once
-- **Direct DB access**: The viewer and diff pages access IndexedDB directly (bypassing the service worker) to avoid serializing large HTML through Chrome's message API
-- **Paginated queries**: `getSnapshotsPaginated()` supports offset/limit for large collections
-
-### Compression
-
-- HTML is compressed with gzip via `CompressionStream` before storage
-- Typical compression ratio: 60-80% size reduction
-- Decompression happens on-demand when viewing (via `DecompressionStream`)
-- Deep capture bundles (JSON with all resources) are also gzip-compressed
-
-### Capture Parallelism
-
-- DOM snapshot and screenshot are captured in parallel via `Promise.allSettled`
-- Metadata and data saves are done in parallel via `Promise.all`
-- Screenshot/thumbnail failure doesn't block the capture (degraded gracefully)
+- Metadata/data separation for fast listing
+- Cursor-based search
+- Direct DB access in viewer/diff
+- Gzip compression (60-80%)
+- Parallel capture
+- Data URL thumbnails
 
 ---
 
 ## Design Decisions
 
-### Why No Build System?
-
-The extension uses vanilla JavaScript with ES Modules, which Chrome natively supports. This eliminates:
-- Build step complexity
-- Source map management
-- Bundler configuration
-- Development server requirements
-
-The trade-off is no TypeScript, no JSX, no tree-shaking. For this project's scale (~5000 lines), the simplicity benefit outweighs these losses.
-
-### Why IndexedDB Over chrome.storage?
-
-- `chrome.storage.local` has a 10MB quota (or unlimited with permission, but slow for large objects)
-- IndexedDB supports Blob storage natively (compressed HTML)
-- IndexedDB supports indexes for efficient queries
-- IndexedDB supports cursor-based iteration for memory-efficient search
-- IndexedDB supports transactions for atomic operations
-
-### Why Data URL Strings for Thumbnails?
-
-Chrome's message serialization (`chrome.runtime.sendMessage`) cannot transfer Blob objects. Options considered:
-1. **Object URLs**: Can't be used cross-context
-2. **ArrayBuffer transfer**: Requires structured clone, complex
-3. **Data URL strings**: Just works everywhere, at the cost of ~33% size overhead
-
-The data URL approach was chosen for simplicity and reliability.
-
-### Why FNV-1a for Page Watching?
-
-- Only need change detection, not cryptographic security
-- FNV-1a is extremely fast (single pass, simple arithmetic)
-- 32-bit hash is sufficient for detecting text content changes
-- No external crypto library needed
-
-### Why Shadow DOM for Content Script UI?
-
-Content scripts inject UI into arbitrary web pages. Without isolation:
-- Host page CSS could break Recall's UI
-- Host page JavaScript could interfere with Recall's event handlers
-- Recall's CSS could affect the host page layout
-
-Closed Shadow DOM provides complete bidirectional isolation.
-
-### Why Separate Capture Types?
-
-- **Auto capture**: Lightweight, runs on every page, uses content script DOM cloning. Good for most pages but misses dynamically-loaded resources.
-- **Manual capture**: Same as auto but explicitly triggered, skips deduplication.
-- **Deep capture**: Uses CDP for complete resource extraction. Much slower and requires debugger attachment (shows banner) but produces vastly more faithful reproductions.
-
-This tiered approach balances coverage (auto captures everything) with fidelity (deep capture when you need it).
+| Decision | Rationale |
+|----------|-----------|
+| No build system | Chrome supports ES Modules natively |
+| IndexedDB | Blob support, indexes, cursors, transactions |
+| Data URL thumbnails | Message serialization can't transfer Blobs |
+| FNV-1a hashing | Fast, non-cryptographic — only needs change detection |
+| Shadow DOM | Complete CSS/JS isolation |
+| Tiered capture | auto → manual → deep → clip for coverage vs. fidelity |

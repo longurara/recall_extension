@@ -22,8 +22,8 @@ const capturingTabs = new Set();
  * Set badge on extension icon
  */
 function setBadge(tabId, text, color) {
-  chrome.action.setBadgeText({ text, tabId }).catch(() => {});
-  chrome.action.setBadgeBackgroundColor({ color, tabId }).catch(() => {});
+  chrome.action.setBadgeText({ text, tabId }).catch(() => { });
+  chrome.action.setBadgeBackgroundColor({ color, tabId }).catch(() => { });
 }
 
 /**
@@ -31,7 +31,7 @@ function setBadge(tabId, text, color) {
  */
 function clearBadge(tabId, delay = 2000) {
   setTimeout(() => {
-    chrome.action.setBadgeText({ text: '', tabId }).catch(() => {});
+    chrome.action.setBadgeText({ text: '', tabId }).catch(() => { });
   }, delay);
 }
 
@@ -145,6 +145,14 @@ async function blobToDataUrl(blob) {
 }
 
 /**
+ * Convert data URL string to Blob
+ */
+async function dataUrlToBlob(dataUrl) {
+  const res = await fetch(dataUrl);
+  return res.blob();
+}
+
+/**
  * Main capture function - orchestrates DOM snapshot + screenshot
  * @param {number} tabId
  * @param {string} captureType - 'auto' | 'manual'
@@ -226,6 +234,8 @@ export async function captureTab(tabId, captureType = CAPTURE_AUTO, flowMeta = n
     // Create thumbnail (stored as data URL string for message serialization)
     const screenshotUrl =
       screenshotDataUrl.status === 'fulfilled' ? screenshotDataUrl.value : null;
+    const keepOriginal = settings.saveOriginalScreenshots !== false;
+    const screenshotBlob = keepOriginal && screenshotUrl ? await dataUrlToBlob(screenshotUrl) : null;
     const thumbnailDataUrl = await createThumbnailDataUrl(screenshotUrl);
 
     // Generate snapshot ID
@@ -240,7 +250,7 @@ export async function captureTab(tabId, captureType = CAPTURE_AUTO, flowMeta = n
       favicon: domData.favicon || '',
       timestamp: domData.captureTime,
       captureType,
-      snapshotSize: compressedBlob.size,
+      snapshotSize: compressedBlob.size + (screenshotBlob?.size || 0),
       thumbnailDataUrl,
       scrollPosition: domData.scrollY || 0,
       tags: [],
@@ -250,12 +260,27 @@ export async function captureTab(tabId, captureType = CAPTURE_AUTO, flowMeta = n
       parentSnapshotId: flowMeta?.parentSnapshotId || null,
     };
 
+    // Apply auto-tag rules
+    try {
+      const rules = await db.getAllAutoTagRules();
+      for (const rule of rules) {
+        if (rule.domain && metadata.domain && metadata.domain.includes(rule.domain)) {
+          if (!metadata.tags.includes(rule.tag)) {
+            metadata.tags.push(rule.tag);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Recall] Auto-tag rules failed:', e);
+    }
+
     // Save data
     const snapshotData = {
       id,
       domSnapshot: compressedBlob,
       deepBundle: null,
       textContent: domData.textContent || '',
+      screenshotBlob,
     };
 
     // Save both in parallel
@@ -276,7 +301,7 @@ export async function captureTab(tabId, captureType = CAPTURE_AUTO, flowMeta = n
     chrome.runtime.sendMessage({
       type: MSG.SNAPSHOT_SAVED,
       snapshot: metadata,
-    }).catch(() => {}); // Ignore if no listeners
+    }).catch(() => { }); // Ignore if no listeners
 
     return metadata;
   } catch (error) {

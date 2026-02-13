@@ -8,6 +8,52 @@
   if (window.__recallSnapshotInjected) return;
   window.__recallSnapshotInjected = true;
 
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  async function waitForPageIdle(maxWaitMs = 20000, idleMs = 1200) {
+    // Wait for load event if not complete
+    if (document.readyState !== 'complete') {
+      await new Promise((resolve) => {
+        const onLoad = () => resolve();
+        window.addEventListener('load', onLoad, { once: true, capture: true });
+        setTimeout(resolve, Math.min(maxWaitMs, 5000));
+      });
+    }
+
+    const start = Date.now();
+    let lastBusy = Date.now();
+
+    const markBusy = () => { lastBusy = Date.now(); };
+
+    let perfObserver = null;
+    try {
+      perfObserver = new PerformanceObserver((list) => {
+        if (list.getEntries().length) markBusy();
+      });
+      perfObserver.observe({ type: 'resource', buffered: true });
+    } catch { /* unsupported */ }
+
+    // Wait for pending images
+    const pendingImages = Array.from(document.images).filter((img) => !img.complete);
+    if (pendingImages.length > 0) {
+      await Promise.race([
+        Promise.allSettled(pendingImages.map((img) => new Promise((resolve) => {
+          const done = () => { markBusy(); resolve(); };
+          img.addEventListener('load', done, { once: true });
+          img.addEventListener('error', done, { once: true });
+        }))),
+        wait(maxWaitMs / 2),
+      ]);
+    }
+
+    // Wait for network/resource idle
+    while ((Date.now() - lastBusy) < idleMs && (Date.now() - start) < maxWaitMs) {
+      await wait(200);
+    }
+
+    if (perfObserver) perfObserver.disconnect();
+  }
+
   /**
    * Convert an image element to base64 data URI
    */
@@ -105,6 +151,9 @@
   async function captureDOM() {
     const startTime = performance.now();
 
+    // Allow resources to finish loading (better for images/long pages)
+    await waitForPageIdle();
+
     // Clone the entire document
     const docClone = document.documentElement.cloneNode(true);
 
@@ -152,7 +201,8 @@
       // StyleSheet access error
     }
 
-    // 3. Inline images as base64
+    // 3. Inline images as base64 (use progressive cache as fallback)
+    const progressiveCache = window.__recallProgressiveCache || null;
     const images = docClone.querySelectorAll('img');
     for (const clonedImg of images) {
       const src = clonedImg.getAttribute('src');
@@ -165,12 +215,41 @@
           (i) => i.src === absoluteSrc
         );
 
+      let dataUrl = null;
+
+      // Try 1: Live canvas conversion
       if (originalImg && originalImg.complete && originalImg.naturalWidth > 0) {
-        const dataUrl = imageToBase64(originalImg);
-        if (dataUrl) {
-          clonedImg.setAttribute('src', dataUrl);
-          // Remove srcset to prevent browser loading other sources
-          clonedImg.removeAttribute('srcset');
+        dataUrl = imageToBase64(originalImg);
+      }
+
+      // Try 2: Progressive cache fallback
+      if (!dataUrl && progressiveCache) {
+        dataUrl = progressiveCache.lookupImage(absoluteSrc) ||
+          progressiveCache.lookupImage(src);
+      }
+
+      if (dataUrl) {
+        clonedImg.setAttribute('src', dataUrl);
+        // Remove srcset to prevent browser loading other sources
+        clonedImg.removeAttribute('srcset');
+      }
+    }
+
+    // Also inline lazy-load data-src attributes using progressive cache
+    if (progressiveCache) {
+      const lazySrcs = docClone.querySelectorAll('img[data-src]');
+      for (const img of lazySrcs) {
+        const dataSrc = img.getAttribute('data-src');
+        if (!dataSrc || dataSrc.startsWith('data:')) continue;
+        if (img.getAttribute('src') && img.getAttribute('src').startsWith('data:')) continue; // already inlined
+
+        const absDataSrc = new URL(dataSrc, document.baseURI).href;
+        const cached = progressiveCache.lookupImage(absDataSrc) ||
+          progressiveCache.lookupImage(dataSrc);
+        if (cached) {
+          img.setAttribute('src', cached);
+          img.removeAttribute('data-src');
+          img.removeAttribute('srcset');
         }
       }
     }

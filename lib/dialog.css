@@ -1,0 +1,190 @@
+/* lib/dialog.css - Custom dialog styles matching extension theme */
+
+.recall-dialog-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 99999;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.recall-dialog-overlay.visible {
+    opacity: 1;
+}
+
+.recall-dialog {
+    background: var(--surface, #ffffff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 10px;
+    padding: 0;
+    min-width: 260px;
+    max-width: 340px;
+    width: 85%;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    transform: scale(0.95) translateY(8px);
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    overflow: hidden;
+}
+
+.recall-dialog-overlay.visible .recall-dialog {
+    transform: scale(1) translateY(0);
+}
+
+/* Icon header */
+.recall-dialog-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 14px 20px 0;
+}
+
+.recall-dialog-icon svg {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    padding: 7px;
+}
+
+.recall-dialog-icon.confirm svg {
+    background: rgba(37, 99, 235, 0.1);
+    color: var(--primary, #2563eb);
+}
+
+.recall-dialog-icon.danger svg {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger, #ef4444);
+}
+
+.recall-dialog-icon.info svg {
+    background: rgba(37, 99, 235, 0.1);
+    color: var(--primary, #2563eb);
+}
+
+.recall-dialog-icon.success svg {
+    background: rgba(34, 197, 94, 0.1);
+    color: #22c55e;
+}
+
+.recall-dialog-icon.warning svg {
+    background: rgba(245, 158, 11, 0.1);
+    color: #f59e0b;
+}
+
+.recall-dialog-icon.error svg {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger, #ef4444);
+}
+
+/* Body */
+.recall-dialog-body {
+    padding: 10px 20px 14px;
+    text-align: center;
+}
+
+.recall-dialog-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text, #1e293b);
+    margin-bottom: 4px;
+    line-height: 1.4;
+}
+
+.recall-dialog-message {
+    font-size: 12px;
+    color: var(--text-secondary, #64748b);
+    line-height: 1.5;
+    white-space: pre-line;
+}
+
+/* Actions */
+.recall-dialog-actions {
+    display: flex;
+    gap: 0;
+    border-top: 1px solid var(--border, #e2e8f0);
+}
+
+.recall-dialog-btn {
+    flex: 1;
+    padding: 10px 12px;
+    border: none;
+    background: transparent;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-family: inherit;
+    color: var(--text, #1e293b);
+}
+
+.recall-dialog-btn:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.recall-dialog-btn:active {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+.recall-dialog-btn+.recall-dialog-btn {
+    border-left: 1px solid var(--border, #e2e8f0);
+}
+
+.recall-dialog-btn.primary {
+    color: var(--primary, #2563eb);
+    font-weight: 600;
+}
+
+.recall-dialog-btn.danger {
+    color: var(--danger, #ef4444);
+    font-weight: 600;
+}
+
+/* Single button (alert) gets full width and rounded bottom */
+.recall-dialog-actions.single .recall-dialog-btn {
+    border-radius: 0 0 10px 10px;
+}
+
+/* Dark mode */
+[data-theme="dark"] .recall-dialog-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .recall-dialog-btn:active {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .recall-dialog {
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .recall-dialog-icon.confirm svg {
+    background: rgba(59, 130, 246, 0.15);
+}
+
+[data-theme="dark"] .recall-dialog-icon.danger svg {
+    background: rgba(248, 113, 113, 0.15);
+}
+
+[data-theme="dark"] .recall-dialog-icon.info svg {
+    background: rgba(59, 130, 246, 0.15);
+}
+
+[data-theme="dark"] .recall-dialog-icon.success svg {
+    background: rgba(34, 197, 94, 0.15);
+}
+
+[data-theme="dark"] .recall-dialog-icon.warning svg {
+    background: rgba(245, 158, 11, 0.15);
+}
+
+[data-theme="dark"] .recall-dialog-icon.error svg {
+    background: rgba(248, 113, 113, 0.15);
+}

@@ -3,6 +3,8 @@
 import { MSG } from '../lib/constants.js';
 import { formatBytes, timeAgo, debounce, truncate } from '../lib/utils.js';
 import { initTheme, createThemeToggle } from '../lib/theme.js';
+import { showConfirm } from '../lib/dialog.js';
+import { initI18n, applyI18n } from '../lib/i18n.js';
 
 // ============================================================
 // State
@@ -243,7 +245,7 @@ function openSnapshot(id) {
 }
 
 async function deleteSnapshot(id) {
-  if (!confirm('Delete this snapshot?')) return;
+  if (!await showConfirm('Delete this snapshot?', { title: 'Delete Snapshot', type: 'danger', confirmText: 'Delete', cancelText: 'Cancel' })) return;
 
   try {
     await sendMessage({ type: MSG.DELETE_SNAPSHOT, id });
@@ -327,6 +329,6 @@ chrome.runtime.onMessage.addListener((message) => {
 
 initTheme();
 createThemeToggle(document.getElementById('theme-toggle-container'));
-
+initI18n().then(() => applyI18n());
 loadSnapshots();
 loadStorageUsage();

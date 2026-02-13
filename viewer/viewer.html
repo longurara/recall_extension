@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Recall - Snapshot Viewer</title>
   <link rel="stylesheet" href="viewer.css">
 </head>
+
 <body>
   <!-- Collapsible Info Bar -->
   <div id="info-bar" class="info-bar">
@@ -13,7 +15,8 @@
       <div class="info-left">
         <img id="favicon" class="favicon" src="" alt="" width="16" height="16">
         <span class="badge" id="capture-type-badge">auto</span>
-        <a id="original-url" class="original-url" href="#" target="_blank" rel="noopener noreferrer" title="Open original page"></a>
+        <a id="original-url" class="original-url" href="#" target="_blank" rel="noopener noreferrer"
+          title="Open original page"></a>
       </div>
       <div class="info-center">
         <span id="snapshot-title" class="snapshot-title"></span>
@@ -25,43 +28,92 @@
         <span id="snapshot-tags" class="snapshot-tags"></span>
       </div>
       <div class="info-right">
-        <button id="btn-flow-prev" class="btn btn-icon btn-flow-nav hidden" title="Previous in flow">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <button id="btn-flow-prev" class="btn btn-icon btn-flow-nav hidden" data-i18n-title="viewer-prev-flow"
+          title="Previous in flow">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
         </button>
         <span id="flow-position" class="flow-position hidden"></span>
-        <button id="btn-flow-next" class="btn btn-icon btn-flow-nav hidden" title="Next in flow">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <button id="btn-flow-next" class="btn btn-icon btn-flow-nav hidden" data-i18n-title="viewer-next-flow"
+          title="Next in flow">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
         </button>
         <span class="separator flow-nav-sep hidden" id="flow-nav-sep">|</span>
         <span id="theme-toggle-container"></span>
         <button id="btn-original" class="btn btn-icon" title="Open original page">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3H3v10h10v-3M9 3h4v4M14 2L7 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M6 3H3v10h10v-3M9 3h4v4M14 2L7 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
         </button>
-        <button id="btn-export" class="btn btn-icon" title="Export as MHTML">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M4 7l4 4 4-4M3 12v1h10v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <button id="btn-export" class="btn btn-icon" data-i18n-title="viewer-export" title="Export as MHTML">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 2v8M4 7l4 4 4-4M3 12v1h10v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
         </button>
-        <button id="btn-notes" class="btn btn-icon" title="Toggle notes panel">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 2h10a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.5"/><path d="M5 5h6M5 8h6M5 11h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <button id="btn-share" class="btn btn-icon" title="Export as standalone HTML">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="12" cy="4" r="2" stroke="currentColor" stroke-width="1.5" />
+            <circle cx="4" cy="8" r="2" stroke="currentColor" stroke-width="1.5" />
+            <circle cx="12" cy="12" r="2" stroke="currentColor" stroke-width="1.5" />
+            <path d="M6 9l4 2M6 7l4-2" stroke="currentColor" stroke-width="1.5" />
+          </svg>
+        </button>
+        <button id="btn-summarize" class="btn btn-icon" data-i18n-title="viewer-ai-summary" title="AI Summary">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M3 4h10M3 8h7M3 12h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            <circle cx="13" cy="11" r="2" stroke="currentColor" stroke-width="1.5" />
+            <path d="M13 9v-1" stroke="currentColor" stroke-width="1" />
+          </svg>
+        </button>
+        <button id="btn-notes" class="btn btn-icon" data-i18n-title="viewer-notes" title="Toggle notes panel">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M3 2h10a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor"
+              stroke-width="1.5" />
+            <path d="M5 5h6M5 8h6M5 11h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
         </button>
         <button id="btn-annotations" class="btn btn-icon" title="Toggle annotations panel">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 10.5V14h3.5L13 6.5 9.5 3 2 10.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9.5 3l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M2 10.5V14h3.5L13 6.5 9.5 3 2 10.5z" stroke="currentColor" stroke-width="1.5"
+              stroke-linejoin="round" />
+            <path d="M9.5 3l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
         </button>
         <button id="btn-star" class="btn btn-icon" title="Star this snapshot">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1l2.2 4.4L15 6l-3.5 3.4.8 4.8L8 12l-4.3 2.2.8-4.8L1 6l4.8-.6L8 1z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 1l2.2 4.4L15 6l-3.5 3.4.8 4.8L8 12l-4.3 2.2.8-4.8L1 6l4.8-.6L8 1z" stroke="currentColor"
+              stroke-width="1.5" stroke-linejoin="round" />
+          </svg>
         </button>
-        <button id="btn-delete" class="btn btn-icon btn-danger" title="Delete this snapshot">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1M6 7v5M10 7v5M4 4l.8 9a1 1 0 001 .9h4.4a1 1 0 001-.9L12 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <button id="btn-delete" class="btn btn-icon btn-danger" data-i18n-title="viewer-delete"
+          title="Delete this snapshot">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M2 4h12M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1M6 7v5M10 7v5M4 4l.8 9a1 1 0 001 .9h4.4a1 1 0 001-.9L12 4"
+              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
         </button>
         <button id="btn-collapse" class="btn btn-icon" title="Hide info bar">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 10l4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M4 10l4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
         </button>
       </div>
     </div>
   </div>
 
   <!-- Floating expand button (visible when info bar is hidden) -->
-  <button id="btn-expand" class="btn-expand hidden" title="Show info bar">
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <button id="btn-expand" class="btn-expand hidden" data-i18n-title="viewer-expand" title="Show info bar">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
     Recall
   </button>
 
@@ -70,7 +122,9 @@
     <div class="notes-header">
       <span>Notes</span>
       <button id="btn-close-notes" class="btn btn-icon btn-sm" title="Close notes">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
       </button>
     </div>
     <textarea id="notes-textarea" class="notes-textarea" placeholder="Add notes about this snapshot..."></textarea>
@@ -82,14 +136,36 @@
   <!-- Annotations Panel (collapsible, right side) -->
   <div id="annotations-panel" class="annotations-panel hidden">
     <div class="annotations-header">
-      <span>Annotations</span>
+      <span data-i18n="viewer-annotations">Annotations</span>
       <button id="btn-close-annotations" class="btn btn-icon btn-sm" title="Close annotations">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
       </button>
     </div>
     <div class="annotations-hint">Select text in the snapshot to highlight it</div>
     <div id="annotations-list" class="annotations-list"></div>
-    <div id="annotations-empty" class="annotations-empty">No annotations yet</div>
+    <div id="annotations-empty" class="annotations-empty" data-i18n="viewer-no-annotations">No annotations yet</div>
+  </div>
+
+  <!-- AI Summary Panel -->
+  <div id="summary-panel" class="summary-panel hidden">
+    <div class="summary-header">
+      <span data-i18n="viewer-ai-summary">AI Summary</span>
+      <button id="btn-close-summary" class="btn btn-icon btn-sm" title="Close summary">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
+      </button>
+    </div>
+    <div id="summary-content" class="summary-content">
+      <p class="summary-placeholder">Click "Generate" to create an AI summary of this page.</p>
+    </div>
+    <div class="summary-footer">
+      <button id="btn-generate-summary" class="btn btn-primary-sm" data-i18n="viewer-gen-summary">Generate
+        Summary</button>
+      <span id="summary-status" class="summary-status"></span>
+    </div>
   </div>
 
   <!-- Floating annotation toolbar (appears on text selection in iframe) -->
@@ -107,16 +183,17 @@
   <!-- Loading overlay -->
   <div id="loading" class="loading">
     <div class="loading-spinner"></div>
-    <p>Loading snapshot...</p>
+    <p data-i18n="viewer-loading">Loading snapshot...</p>
   </div>
 
   <!-- Error overlay -->
   <div id="error" class="error hidden">
-    <h2>Snapshot not found</h2>
+    <h2 data-i18n="viewer-not-found">Snapshot not found</h2>
     <p id="error-message"></p>
-    <button id="btn-back" class="btn btn-primary">Open Manager</button>
+    <button id="btn-back" class="btn btn-primary" data-i18n="viewer-open-manager">Open Manager</button>
   </div>
 
   <script src="viewer.js" type="module"></script>
 </body>
+
 </html>

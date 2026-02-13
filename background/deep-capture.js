@@ -206,17 +206,19 @@ export async function deepCaptureTab(tabId, flowMeta = null) {
     }
 
     // 4. Take screenshot via CDP (higher quality)
-    let screenshotData = null;
-    try {
-      const result = await sendCommand(tabId, 'Page.captureScreenshot', {
-        format: 'jpeg',
-        quality: 80,
+  let screenshotData = null;
+  let screenshotBlob = null;
+  try {
+    const result = await sendCommand(tabId, 'Page.captureScreenshot', {
+      format: 'jpeg',
+      quality: 80,
         captureBeyondViewport: false,
-      });
-      screenshotData = result.data; // base64
-    } catch {
-      console.warn('[Recall] CDP screenshot failed');
-    }
+    });
+    screenshotData = result.data; // base64
+    screenshotBlob = base64ToBlob(screenshotData, 'image/jpeg');
+  } catch {
+    console.warn('[Recall] CDP screenshot failed');
+  }
 
     // Detach debugger
     await detachDebugger(tabId);
@@ -268,10 +270,9 @@ export async function deepCaptureTab(tabId, flowMeta = null) {
 
     // 8. Create thumbnail from screenshot (as data URL string for message serialization)
     let thumbnailDataUrl = null;
-    if (screenshotData) {
+    if (screenshotData && screenshotBlob) {
       try {
-        const imgBlob = base64ToBlob(screenshotData, 'image/jpeg');
-        const bitmap = await createImageBitmap(imgBlob);
+        const bitmap = await createImageBitmap(screenshotBlob);
         const canvas = new OffscreenCanvas(320, 200);
         const ctx = canvas.getContext('2d');
 
@@ -305,7 +306,7 @@ export async function deepCaptureTab(tabId, flowMeta = null) {
       favicon: '',
       timestamp: bundle.captureTime,
       captureType: CAPTURE_DEEP,
-      snapshotSize: compressedHtml.size + compressedBundle.size,
+      snapshotSize: compressedHtml.size + compressedBundle.size + (screenshotBlob?.size || 0),
       thumbnailDataUrl,
       scrollPosition: 0,
       tags: ['deep-capture'],
@@ -336,6 +337,7 @@ export async function deepCaptureTab(tabId, flowMeta = null) {
       domSnapshot: compressedHtml,
       deepBundle: compressedBundle,
       textContent,
+      screenshotBlob,
     };
 
     await Promise.all([

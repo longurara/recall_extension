@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recall - Dashboard</title>
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+
+<body>
+    <div class="dashboard">
+        <div class="topbar">
+            <div class="topbar-left">
+                <h1 class="logo">Recall</h1>
+                <span class="subtitle" data-i18n="dash-subtitle">Dashboard</span>
+            </div>
+            <div class="topbar-right">
+                <button id="btn-manager" class="btn btn-ghost" data-i18n="dash-back">← Back to Manager</button>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="stat-total">0</div>
+                <div class="stat-label" data-i18n="dash-total">Total Snapshots</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-today">0</div>
+                <div class="stat-label" data-i18n="dash-today">Today</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-week">0</div>
+                <div class="stat-label" data-i18n="dash-week">This Week</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-unread">0</div>
+                <div class="stat-label" data-i18n="dash-unread">Unread (Read Later)</div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3 data-i18n="dash-per-day">Snapshots Per Day (Last 30 Days)</h3>
+                <canvas id="chart-per-day" width="600" height="200"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3 data-i18n="dash-top-domains">Top Domains</h3>
+                <div id="chart-domains" class="bar-list"></div>
+            </div>
+            <div class="chart-card">
+                <h3 data-i18n="dash-storage-domain">Storage by Domain</h3>
+                <div id="chart-storage" class="bar-list"></div>
+            </div>
+            <div class="chart-card">
+                <h3 data-i18n="dash-capture-types">Capture Types</h3>
+                <div id="chart-types" class="type-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="dashboard.js" type="module"></script>
+</body>
+
+</html>

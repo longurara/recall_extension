@@ -1,4 +1,433 @@
-# User Guide
+# Hướng dẫn sử dụng / User Guide
+
+> **[🇻🇳 Tiếng Việt](#tiếng-việt)** | **[🇬🇧 English](#english)**
+
+---
+
+# 🇻🇳 Tiếng Việt
+
+Hướng dẫn toàn diện để sử dụng mọi tính năng của tiện ích Recall.
+
+---
+
+## Mục lục
+
+- [Bắt đầu](#bắt-đầu)
+- [Tự động chụp](#tự-động-chụp)
+- [Chụp thủ công](#chụp-thủ-công)
+- [Chụp sâu (Deep Capture)](#chụp-sâu-deep-capture)
+- [Đọc sau](#đọc-sau)
+- [Web Clipper](#web-clipper-vi)
+- [Spotlight Search](#spotlight-search-vi)
+- [AI Chat](#ai-chat-vi)
+- [Thông báo "Bạn đã ở đây"](#thông-báo-bạn-đã-ở-đây)
+- [Trình quản lý Snapshot](#trình-quản-lý-snapshot)
+- [Trình xem Snapshot](#trình-xem-snapshot)
+- [So sánh Diff](#so-sánh-diff)
+- [Theo dõi thay đổi trang](#theo-dõi-thay-đổi-trang)
+- [Quản lý phiên](#quản-lý-phiên)
+- [Dashboard](#dashboard-vi)
+- [Side Panel](#side-panel-vi)
+- [Popup tiện ích](#popup-tiện-ích)
+- [Cài đặt](#cài-đặt-vi)
+- [Quản lý bộ nhớ](#quản-lý-bộ-nhớ)
+- [Chế độ tối & Theme](#chế-độ-tối--theme)
+- [Ngôn ngữ / i18n](#ngôn-ngữ--i18n)
+- [Sao lưu & Khôi phục](#sao-lưu--khôi-phục)
+- [Mẹo & Thủ thuật](#mẹo--thủ-thuật)
+- [Khắc phục sự cố](#khắc-phục-sự-cố)
+
+---
+
+## Bắt đầu
+
+### Cài đặt
+
+1. Tải hoặc clone mã nguồn tiện ích Recall
+2. Mở Chrome → `chrome://extensions/`
+3. Bật **Developer mode** ở góc trên bên phải
+4. Nhấn **Load unpacked** và chọn thư mục tiện ích
+5. Ghim icon Recall vào thanh công cụ
+
+### Lần chạy đầu tiên
+
+- Mọi trang bạn truy cập được tự động chụp sau 2 giây
+- Icon hiển thị badge trạng thái (xanh = đã chụp)
+- Nhấn `Ctrl+Space` trên bất kỳ trang nào để thử Spotlight Search
+- Thay đổi ngôn ngữ trong Cài đặt → Ngôn ngữ
+
+---
+
+## Tự động chụp
+
+### Cách hoạt động
+
+1. Bạn truy cập trang web (hoặc SPA thay đổi route)
+2. Recall chờ khoảng trễ (mặc định 2 giây)
+3. Content script clone DOM, inline CSS và hình ảnh
+4. Service worker nén và lưu snapshot
+5. Badge "OK" xanh xuất hiện trên icon
+
+### Những gì được chụp
+
+- HTML hoàn chỉnh với style inline
+- Hình ảnh cùng origin chuyển đổi sang base64
+- Canvas → hình ảnh tĩnh
+- Giá trị form được bảo toàn
+- Favicon và text trang cho tìm kiếm
+- Thumbnail screenshot
+
+### Tắt tự động chụp
+
+- Popup → Bật/tắt "Tự động chụp"
+- Menu chuột phải → "Bật/tắt tự động chụp"
+- Cài đặt → Bỏ chọn "Bật tự động chụp"
+
+---
+
+## Chụp thủ công
+
+| Phương thức | Cách |
+|-------------|------|
+| Phím tắt | `Ctrl+Shift+S` / `Cmd+Shift+S` (Mac) |
+| Popup | Nhấn "Chụp trang này" |
+| Menu chuột phải | Nhấp chuột phải → "Chụp trang này" |
+
+Chụp thủ công **bỏ qua kiểm tra trùng lặp** và **không bao giờ bị tự động xóa**.
+
+---
+
+## Chụp sâu (Deep Capture)
+
+Sử dụng Chrome DevTools Protocol cho độ trung thực tối đa.
+
+### Khi nào nên dùng
+
+- CSS phức tạp / web font không inline tốt
+- Trang bạn muốn lưu trữ với chất lượng cao nhất
+- Trước khi trang có thể offline hoặc thay đổi đáng kể
+
+### Cách kích hoạt
+
+- Popup → "Chụp sâu (CDP)"
+- Menu chuột phải → "Chụp sâu trang này"
+
+### Điều gì xảy ra
+
+1. Chrome hiển thị banner "debugging started" (bình thường)
+2. TẤT CẢ tài nguyên được trích xuất (CSS, JS, hình, font)
+3. DOM snapshot đầy đủ với computed styles
+4. MHTML archive được tạo
+5. Screenshot chất lượng cao
+6. Mọi thứ được nén và lưu
+
+> Deep capture mất 5-15 giây và tạo snapshot lớn hơn 2-10 lần.
+
+---
+
+## Đọc sau
+
+### Cách lưu
+
+- Popup → "Đọc sau"
+- Phím tắt: `Alt+Shift+R`
+
+### Cách truy cập
+
+- Trình quản lý → lọc theo loại "Đọc sau"
+- Mục Đọc sau có chỉ báo chưa đọc
+
+### Nhắc đọc
+
+Nếu `readLaterReminderDays` được đặt (mặc định 3 ngày), bạn sẽ nhận thông báo.
+
+---
+
+## Web Clipper {#web-clipper-vi}
+
+1. Menu chuột phải → "Cắt trang này" hoặc bật trong popup
+2. Overlay chọn xuất hiện trên trang
+3. Chọn vùng bạn muốn cắt
+4. Đoạn HTML được chọn lưu dạng snapshot "clip"
+
+---
+
+## Spotlight Search {#spotlight-search-vi}
+
+### Mở
+
+- Nhấn `Ctrl+Space` trên bất kỳ trang web nào
+
+### Sử dụng
+
+1. **Gõ truy vấn** — tìm tiêu đề, URL, domain và nội dung trang
+2. **Phím mũi tên** — điều hướng kết quả
+3. **Enter** — mở snapshot trong viewer
+4. **Ctrl+Enter** — mở trong tab mới
+5. **Escape** — đóng overlay
+
+---
+
+## AI Chat {#ai-chat-vi}
+
+### Cách sử dụng
+
+1. Mở Spotlight (`Ctrl+Space`)
+2. Gõ `/ai` theo sau bởi câu hỏi
+3. AI phân tích snapshot đã lưu và trả lời
+4. Snapshot được tham chiếu hiển thị dạng liên kết
+
+### Nút gợi ý
+
+Trong chế độ AI, các nút gợi ý nhanh xuất hiện:
+- "Tóm tắt lịch sử duyệt gần đây"
+- "Tôi đã đọc gì?"
+- "Tìm bài viết về..."
+
+### Thiết lập
+
+1. Cài đặt → phần Tóm tắt AI
+2. Đặt nhà cung cấp AI thành "Google Gemini"
+3. Nhập API Key Gemini
+4. Chọn model (ví dụ: `gemini-2.0-flash`)
+
+> Phản hồi AI khớp ngôn ngữ giao diện (Tiếng Anh / Tiếng Việt).
+
+---
+
+## Thông báo "Bạn đã ở đây"
+
+Khi truy cập lại trang có snapshot, thanh thông báo hiển thị:
+- Số lượng snapshot đã lưu
+- Thời gian chụp gần nhất
+- Liên kết nhanh để xem snapshot
+
+---
+
+## Trình quản lý Snapshot
+
+### Mở
+
+- `Ctrl+Shift+R` / `Cmd+Shift+R` (Mac)
+- Popup → "Trình quản lý"
+- Menu chuột phải → "Mở Recall Manager"
+
+### Chế độ xem
+
+| Chế độ | Mô tả |
+|--------|-------|
+| **Lưới** | Thẻ thumbnail với xem trước hover |
+| **Danh sách** | Bảng compact |
+| **Luồng** | Timeline phiên duyệt web |
+| **Theo dõi** | Giám sát thay đổi trang |
+
+### Tổ chức
+
+- **Tìm kiếm**: Lọc theo tiêu đề, URL, domain, nội dung
+- **Lọc domain**: Dropdown tất cả domain đã chụp
+- **Lọc loại**: Tất cả / Tự động / Thủ công / Sâu / Cắt / Đọc sau
+- **Sắp xếp**: Mới nhất, cũ nhất, lớn nhất, nhỏ nhất, tên A-Z
+- **Thẻ**: Thêm thẻ tùy chỉnh
+- **Bộ sưu tập**: Nhóm snapshot vào bộ sưu tập
+- **Sao / Ghim**: Đánh dấu snapshot quan trọng
+- **Chọn nhiều**: Ctrl+click để xóa/xuất hàng loạt
+
+### Thùng rác
+
+Snapshot đã xóa vào thùng rác trước. Truy cập từ footer Manager. Tự động xóa sau 30 ngày.
+
+---
+
+## Trình xem Snapshot
+
+| Tính năng | Mô tả |
+|-----------|-------|
+| **Thanh thông tin** | Thu gọn được, hiển thị tiêu đề, URL, thời gian, kích thước, thẻ |
+| **Ghi chú** | Panel bên với tự động lưu |
+| **Chú thích** | Đánh dấu văn bản 5 màu |
+| **Tóm tắt AI** | Tạo tóm tắt AI cho trang |
+| **Điều hướng luồng** | Trước/sau trong phiên duyệt |
+| **Hành động** | Sao, xuất (MHTML/HTML), xóa, mở trang gốc |
+
+---
+
+## So sánh Diff
+
+1. Trong Manager, chọn đúng 2 snapshot
+2. Nhấn "So sánh"
+3. Xem so sánh cạnh nhau với cuộn đồng bộ
+4. Chuyển sang "Text Diff" cho diff từng dòng
+
+---
+
+## Theo dõi thay đổi trang
+
+### Thiết lập
+
+1. Popup → "Theo dõi trang này"
+2. Cấu hình: chu kỳ kiểm tra, CSS selector (tùy chọn)
+
+### Cách hoạt động
+
+- Mỗi 15 phút, kiểm tra trang đến hạn
+- Tải HTML trang, trích xuất text, tính hash FNV-1a
+- Nếu hash khác → phát hiện thay đổi → gửi thông báo
+
+---
+
+## Quản lý phiên
+
+### Lưu phiên
+
+- Popup → "Lưu phiên hiện tại"
+- Lưu tất cả URL, tiêu đề, favicon tab đang mở
+
+### Khôi phục phiên
+
+- Popup → "Khôi phục phiên cuối"
+- Mở lại tất cả tab từ phiên đã lưu
+
+---
+
+## Dashboard {#dashboard-vi}
+
+Truy cập từ header Manager → liên kết "Dashboard".
+
+Hiển thị: thống kê tổng số, hàng ngày, hàng tuần, số chưa đọc; biểu đồ 30 ngày; top domain; phân bổ bộ nhớ; phân bổ loại chụp.
+
+---
+
+## Side Panel {#side-panel-vi}
+
+- Popup → "Mở Side Panel"
+- Danh sách snapshot có thể tìm kiếm bên cạnh duyệt web
+- Nút chụp nhanh, lọc domain, sắp xếp
+
+---
+
+## Popup tiện ích
+
+| Hành động | Mô tả |
+|-----------|-------|
+| Chụp trang này | Chụp thủ công |
+| Chụp sâu (CDP) | Deep capture |
+| Đọc sau | Lưu vào hàng đợi đọc |
+| Theo dõi trang | Bắt đầu giám sát |
+| Lưu tất cả Tab | Chụp tất cả tab |
+| Mở Side Panel | Mở side panel |
+| Trình quản lý | Mở Manager |
+| Lưu phiên | Lưu phiên tab |
+| Khôi phục phiên | Khôi phục phiên |
+| Cài đặt | Mở trang cài đặt |
+| Bật/tắt tự động chụp | Bật/tắt |
+
+---
+
+## Cài đặt {#cài-đặt-vi}
+
+| Danh mục | Cài đặt |
+|----------|---------|
+| **Ngôn ngữ** | Tiếng Anh / Tiếng Việt |
+| **Chụp** | Tự động chụp, trễ, kích thước tối đa, cửa sổ trùng lặp |
+| **Bộ nhớ** | Hạn mức, ngưỡng dọn dẹp, dọn dẹp theo thời gian |
+| **Loại trừ domain** | Domain không bao giờ chụp |
+| **Tóm tắt AI** | Nhà cung cấp, API key, model |
+| **Theme** | Bảng màu (default, ocean, forest, sunset, midnight, rose) |
+| **Thông báo** | Nhắc đọc sau, cảnh báo bộ nhớ |
+| **Dữ liệu** | Xuất/nhập sao lưu, xóa tất cả |
+
+---
+
+## Quản lý bộ nhớ
+
+### Kích thước ước tính
+
+- Trang thường: 50-200KB (nén)
+- Deep capture: 200KB-5MB
+- Thumbnail: ~10-30KB
+
+### Chiến lược dọn dẹp
+
+1. **Dọn dẹp theo quota**: Xóa cũ nhất không có sao khi ≥90%
+2. **Dọn dẹp theo thời gian**: Auto-capture cũ hơn N ngày bị xóa
+3. **Thủ công**: Xóa hoặc xóa hàng loạt từ Manager
+4. **Thùng rác**: Xóa mềm với cửa sổ khôi phục 30 ngày
+5. **Bảo vệ sao**: Snapshot có sao không bao giờ bị tự động xóa
+
+---
+
+## Chế độ tối & Theme
+
+- Nhấn icon mặt trời/mặt trăng trong header bất kỳ trang Recall
+- Lần đầu: theo `prefers-color-scheme` hệ thống
+- Sau khi bật/tắt: lưu vào localStorage
+- Cài đặt → Màu Theme: 6 bảng màu
+
+---
+
+## Ngôn ngữ / i18n
+
+Cài đặt → Ngôn ngữ → chọn English hoặc Tiếng Việt → Lưu.
+
+Tất cả trang tiện ích cập nhật khi tải lại. Spotlight và AI Chat cũng theo cài đặt ngôn ngữ.
+
+---
+
+## Sao lưu & Khôi phục
+
+- **Xuất**: Cài đặt → "Xuất sao lưu" → tải file ZIP
+- **Nhập**: Cài đặt → "Nhập sao lưu" → chọn file ZIP. Dữ liệu được merge vào database hiện tại.
+
+---
+
+## Mẹo & Thủ thuật
+
+1. **Nghiên cứu**: Tự động chụp + Xem luồng để truy vết đường nghiên cứu
+2. **Giám sát giá**: Theo dõi trang với CSS selector `#price`
+3. **Lưu trữ**: Deep Capture cho trang quan trọng
+4. **Tìm nhanh**: `Ctrl+Space` → gõ → `Enter`
+5. **Trợ lý AI**: `/ai tóm tắt lịch sử duyệt gần đây` trong Spotlight
+6. **Quản lý tab**: Lưu/khôi phục phiên cho chuyển đổi ngữ cảnh
+
+---
+
+## Khắc phục sự cố
+
+### Tự động chụp không hoạt động
+
+1. Kiểm tra bật/tắt tự động chụp (popup)
+2. Kiểm tra danh sách loại trừ domain
+3. Kiểm tra console service worker
+
+### Chụp sâu thất bại
+
+1. Một số trang chặn đính kèm debugger
+2. Thử tải lại trang trước
+3. Kiểm tra xem DevTools có đang mở không
+
+### Spotlight không xuất hiện
+
+1. `Ctrl+Space` có thể xung đột với phím tắt khác
+2. Tùy chỉnh tại `chrome://extensions/shortcuts`
+3. Không chạy trên trang `chrome://`
+
+### AI Chat không hoạt động
+
+1. Xác nhận API key trong Cài đặt → Tóm tắt AI
+2. Kiểm tra đã chọn model chưa
+3. Kiểm tra kết nối internet
+4. Kiểm tra console service worker
+
+### Ngôn ngữ không thay đổi
+
+1. Sau khi đổi ngôn ngữ, nhấn Lưu
+2. Tải lại trang tiện ích
+3. Ngôn ngữ Spotlight cập nhật lần mở tiếp theo
+
+---
+---
+
+# 🇬🇧 English
 
 A comprehensive guide to using every feature of the Recall extension.
 
@@ -10,17 +439,24 @@ A comprehensive guide to using every feature of the Recall extension.
 - [Auto-Capture](#auto-capture)
 - [Manual Capture](#manual-capture)
 - [Deep Capture](#deep-capture)
+- [Read Later](#read-later)
+- [Web Clipper](#web-clipper)
 - [Spotlight Search](#spotlight-search)
+- [AI Chat](#ai-chat)
 - [You Were Here Notifications](#you-were-here-notifications)
 - [Snapshot Manager](#snapshot-manager)
 - [Snapshot Viewer](#snapshot-viewer)
 - [Page Diff Comparator](#page-diff-comparator)
 - [Page Change Watching](#page-change-watching)
+- [Session Management](#session-management)
+- [Dashboard](#dashboard)
 - [Side Panel](#side-panel)
 - [Extension Popup](#extension-popup)
 - [Settings](#settings)
 - [Storage Management](#storage-management)
-- [Dark Mode](#dark-mode)
+- [Dark Mode & Themes](#dark-mode--themes)
+- [Language / i18n](#language--i18n)
+- [Backup & Restore](#backup--restore)
 - [Tips & Tricks](#tips--tricks)
 - [Troubleshooting](#troubleshooting)
 
@@ -31,603 +467,195 @@ A comprehensive guide to using every feature of the Recall extension.
 ### Installation
 
 1. Download or clone the Recall extension source code
-2. Open Chrome and go to `chrome://extensions/`
-3. Turn on **Developer mode** in the top-right corner
+2. Open Chrome → `chrome://extensions/`
+3. Turn on **Developer mode**
 4. Click **Load unpacked** and select the extension folder
-5. Pin the Recall icon to your toolbar for easy access
+5. Pin the Recall icon to your toolbar
 
 ### First Run
 
-Once installed, Recall immediately begins working:
-- Every page you visit is automatically captured after a 2-second delay
-- The extension icon shows brief status indicators (green checkmark = captured)
+- Every page you visit is automatically captured after 2 seconds
+- Extension icon shows brief status indicators (green = captured)
 - Press `Ctrl+Space` on any page to try Spotlight Search
+- Change language in Settings → Language dropdown
 
 ---
 
 ## Auto-Capture
 
-Auto-capture is the core feature. It silently saves a snapshot of every page you visit.
+Silently saves a snapshot of every page you visit.
 
-### How It Works
+- Waits for configurable delay (default 2s)
+- Clones DOM, inlines CSS and images
+- Compresses and stores with gzip
+- Green "OK" badge appears on icon
 
-1. You navigate to a web page (or a Single Page App changes its route)
-2. Recall waits for the configurable delay (default: 2 seconds)
-3. The content script clones the entire DOM, inlines CSS and images
-4. The service worker compresses and stores the snapshot in IndexedDB
-5. A brief green "OK" badge appears on the extension icon
+**Captured:** Complete HTML, same-origin images, canvas, form values, favicon, text, thumbnail.
 
-### What Gets Captured
-
-- Complete HTML structure with inlined styles
-- Images converted to base64 (same-origin images only)
-- Canvas elements captured as static images
-- Form input values preserved
-- Favicon captured and stored
-- Page text extracted for full-text search
-- Screenshot thumbnail for visual browsing
-
-### What Gets Excluded
-
-- JavaScript is stripped for security and size
-- Cross-origin images that can't be read (CORS restrictions)
-- Dynamically loaded content that hasn't rendered yet
-- Pages from excluded domains/protocols (Chrome internal pages, etc.)
-- Duplicate URLs captured within the last 5 minutes (configurable)
-
-### Disabling Auto-Capture
-
-You can disable auto-capture in several ways:
-- **Popup**: Click the Recall icon and toggle "Auto-Capture"
-- **Context menu**: Right-click on any page → "Toggle Auto-Capture"
-- **Settings**: Go to Settings page and uncheck "Enable Auto-Capture"
+**Disable:** Popup toggle, context menu, or Settings.
 
 ---
 
 ## Manual Capture
 
-Capture a specific page on demand when auto-capture is disabled or when you want to ensure a page is saved.
-
-### Methods
-
 | Method | How |
 |--------|-----|
-| Keyboard shortcut | `Ctrl+Shift+S` (Windows/Linux) or `Cmd+Shift+S` (Mac) |
-| Popup button | Click Recall icon → "Capture Page" |
-| Context menu | Right-click → "Capture this page (Recall)" |
+| Keyboard | `Ctrl+Shift+S` / `Cmd+Shift+S` |
+| Popup | Click "Capture This Page" |
+| Context menu | Right-click → "Capture this page" |
 
-### Difference from Auto-Capture
-
-- Manual captures **skip duplicate detection** (always captures even if recently saved)
-- Manual captures are tagged as `captureType: 'manual'`
-- Manual captures are **never auto-deleted** by the cleanup system
+Manual captures **skip duplicate check** and are **never auto-deleted**.
 
 ---
 
 ## Deep Capture
 
-Deep Capture produces a much more faithful reproduction of a page by extracting ALL resources directly from Chrome's memory.
+Uses Chrome DevTools Protocol for maximum fidelity (5-15 seconds).
 
-### When to Use Deep Capture
+**Trigger:** Popup → "Deep Capture (CDP)" or context menu.
 
-- Pages with complex CSS frameworks that don't inline well
-- Pages with important web fonts
-- Pages you want to archive with maximum fidelity
-- Before a page might go offline or change significantly
+Captures ALL resources (CSS, JS, images, fonts), computed styles, MHTML, and high-quality screenshot.
 
-### How to Trigger
+---
 
-| Method | How |
-|--------|-----|
-| Popup button | Click Recall icon → "Deep Capture" |
-| Context menu | Right-click → "Deep Capture this page (Recall)" |
+## Read Later
 
-### What Happens During Deep Capture
+- **Save:** Popup → "Read Later" or `Alt+Shift+R`
+- **Access:** Manager → filter by "Read Later"
+- **Reminders:** Notification after configurable days
 
-1. Chrome shows a **"debugging started"** banner at the top of the page (this is normal and required)
-2. The extension connects to Chrome's DevTools Protocol
-3. ALL resources are extracted: HTML, CSS, JavaScript, images, fonts, media
-4. A full DOM snapshot with computed styles is captured
-5. An MHTML archive is generated
-6. A high-quality screenshot is taken
-7. Everything is compressed and stored
-8. The debugging banner disappears
+---
 
-### Deep Capture Output
+## Web Clipper
 
-Deep capture produces two artifacts:
-- **Viewable HTML**: A self-contained HTML file with inlined CSS and images (used in the viewer)
-- **Deep Bundle**: A complete JSON archive of all resources, computed styles, and MHTML (for advanced analysis)
-
-### Caveats
-
-- Deep capture takes longer (5-15 seconds depending on page complexity)
-- The "debugging" banner is visible to the user (Chrome requirement)
-- Some cross-origin resources may still fail to load
-- The resulting snapshot is typically 2-10x larger than standard capture
+1. Context menu → "Clip this page" or popup toggle
+2. Selection overlay appears
+3. Select area to clip
+4. Selected HTML saved as "clip" snapshot
 
 ---
 
 ## Spotlight Search
 
-Spotlight Search is a fast, keyboard-driven search overlay inspired by macOS Spotlight.
+Open with `Ctrl+Space`. Type to search titles, URLs, domains, and page content. Arrow keys to navigate, Enter to open, Escape to close.
 
-### Opening Spotlight
+---
 
-- Press `Ctrl+Space` on any web page
-- Or use the keyboard command (configurable at `chrome://extensions/shortcuts`)
+## AI Chat
 
-### Using Spotlight
+1. Open Spotlight → type `/ai` + question
+2. AI analyzes saved snapshots and responds
+3. Referenced snapshots appear as links
 
-1. **Type your query** - Search by page title, URL, domain, or page content
-2. **Navigate results** - Use `Up/Down` arrow keys to move through results
-3. **Open a snapshot** - Press `Enter` to open the selected snapshot in the viewer
-4. **Open in new tab** - Press `Ctrl+Enter` to open in a new tab
-5. **Close** - Press `Escape` or click outside the overlay
+**Setup:** Settings → AI Summary → Google Gemini → API Key → Model.
 
-### Search Capabilities
-
-- **Metadata matching**: Matches against page title, URL, and domain
-- **Full-text content matching**: Searches the actual text content of captured pages
-- **Context snippets**: Shows ~120 characters of surrounding text for content matches
-- **Match indicators**: Each result shows whether it matched via metadata, content, or both
-
-### Result Information
-
-Each result shows:
-- Page title and URL
-- Domain and favicon
-- Capture timestamp (relative time)
-- Capture type indicator (auto/manual/deep)
-- Star status
-- Content snippet (for content matches)
+> AI responses match your UI language setting.
 
 ---
 
 ## You Were Here Notifications
 
-When you revisit a page that has saved snapshots, a subtle notification bar slides in from the top.
-
-### What It Shows
-
-- Number of saved snapshots for this URL
-- When the most recent snapshot was captured
-- Quick links to view snapshots
-
-### Behavior
-
-- Appears 2.5 seconds after page load (to not disrupt page rendering)
-- Can be dismissed (won't show again for this URL in the current tab session)
-- Does not appear on extension pages
-- Uses closed Shadow DOM so it never interferes with the host page
+Subtle bar when revisiting pages with saved snapshots. Shows count, last capture time, and quick link.
 
 ---
 
 ## Snapshot Manager
 
-The Snapshot Manager is the central hub for browsing, organizing, and managing all your snapshots.
-
-### Opening the Manager
-
-- Press `Ctrl+Shift+R` (Windows/Linux) or `Cmd+Shift+R` (Mac)
-- Click Recall icon → "Open Manager"
-- Right-click → "Open Recall Manager"
-
-### View Modes
-
-#### Grid View (Default)
-
-Displays snapshots as thumbnail cards in a responsive grid:
-- Thumbnail preview image
-- Page title and domain
-- Capture timestamp
-- Capture type badge (auto/manual/deep)
-- Star indicator
-- Click to open in viewer
-
-#### List View
-
-Compact table layout showing:
-- Favicon, title, URL
-- Domain, capture type
-- Size, timestamp
-- Star and delete actions
-
-#### Flow View
-
-Shows your browsing sessions as navigable timelines:
-- Groups snapshots by session (tab browsing chains)
-- Displays chronological flow: Page A → Page B → Page C
-- Shows session duration and page count
-- Click any snapshot in the flow to view it
-
-#### Watch View
-
-Dedicated interface for page change monitoring:
-- List of all watched pages
-- Status indicators (active/paused/error)
-- Change count and last changed time
-- Quick actions: check now, pause, edit, delete
-
-### Organization Features
-
-#### Search
-
-- Type in the search box to filter by title, URL, or domain
-- Click the content search toggle for full-text search across page content
-
-#### Domain Filter
-
-- Dropdown showing all captured domains with counts
-- Select a domain to filter the snapshot list
-
-#### Sorting
-
-- Sort by: Date (newest/oldest), Title (A-Z/Z-A), Domain, Size
-
-#### Tagging
-
-- Click on a snapshot's tag area to add tags
-- Tags are comma-separated text labels
-- Use tags to categorize snapshots (e.g., "research", "work", "recipe")
-
-#### Starring
-
-- Click the star icon on any snapshot to mark it as important
-- Starred snapshots are never auto-deleted
-- Filter to show only starred snapshots
-
-#### Multi-Select
-
-- Hold `Ctrl` and click to select multiple snapshots
-- Or use the "Select All" checkbox
-- Bulk actions: Delete selected, export selected
-
-#### Compare
-
-- Select exactly 2 snapshots
-- Click "Compare" to open the Page Diff Comparator
+4 view modes: Grid, List, Flow, Watch. Full search, domain filter, type filter, sort, tags, collections, star/pin, multi-select, and trash.
 
 ---
 
 ## Snapshot Viewer
 
-The viewer renders a captured snapshot in a secure, isolated environment.
-
-### Opening a Snapshot
-
-- Click any snapshot in the Manager, Side Panel, or Spotlight results
-- Direct URL: `chrome-extension://<id>/viewer/viewer.html?id=<snapshot-id>`
-
-### Viewer Features
-
-#### Info Bar
-
-A collapsible bar at the top showing:
-- Page title and original URL (clickable to visit)
-- Capture timestamp and type
-- Snapshot size
-- Domain and tags
-
-#### Notes Panel
-
-- Click the notes icon to open the side panel
-- Write notes about the snapshot
-- Notes are auto-saved after a brief delay
-- Supports plain text
-
-#### Annotations
-
-- Select text in the rendered snapshot
-- A color picker appears with 5 highlight colors
-- Click a color to highlight the selected text
-- Annotations are saved automatically
-- View all annotations in the annotations panel
-
-#### Flow Navigation
-
-If the snapshot is part of a browsing session (navigation flow):
-- "Previous" and "Next" buttons appear
-- Navigate through the pages you visited in sequence
-- Breadcrumb showing your position in the flow
-
-#### Search Highlighting
-
-When opening from Spotlight with a search query:
-- The query parameter is passed to the viewer
-- Matching text in the rendered page is automatically highlighted
-- Helps you find exactly what you were searching for
-
-#### Actions
-
-| Action | Description |
-|--------|-------------|
-| Star | Toggle star status |
-| Export | Download as MHTML or HTML file |
-| Delete | Delete this snapshot |
-| Open Original | Visit the original URL |
-
-### Security
-
-The snapshot HTML is rendered in a sandboxed iframe (`sandbox.html`) with:
-- All scripts removed
-- Event handlers stripped
-- DOMParser-based HTML sanitization
-- Sandbox attribute preventing script execution
+Renders HTML in sandboxed iframe. Info bar, notes, 5-color annotations, AI summary, flow navigation, export.
 
 ---
 
 ## Page Diff Comparator
 
-Compare two snapshots side-by-side to see what changed.
-
-### Opening the Diff View
-
-1. In the Manager, select exactly 2 snapshots
-2. Click the "Compare" button
-3. Or open directly via URL: `chrome-extension://<id>/diff/diff.html?left=<id1>&right=<id2>`
-
-### Visual Diff
-
-- Two iframes showing the rendered snapshots side-by-side
-- **Synchronized scrolling**: Scrolling one side scrolls the other
-- **Draggable divider**: Resize the split by dragging the center bar
-- Snapshot metadata displayed above each panel
-
-### Text Diff
-
-- Click "Text Diff" to switch to text comparison mode
-- Shows a line-by-line diff using the LCS (Longest Common Subsequence) algorithm
-- **Green lines**: Added content
-- **Red lines**: Removed content
-- **Gray lines**: Unchanged content
-- Line numbers for both versions
+Select 2 snapshots → Compare. Side-by-side with synced scroll and LCS text diff.
 
 ---
 
 ## Page Change Watching
 
-Monitor any webpage for content changes and get notified when something updates.
+Popup → "Watch This Page". Configurable interval and CSS selector. Notifications on change.
 
-### Setting Up a Watch
+---
 
-1. Open the Recall popup and click "Watch Page" (while on the page you want to monitor)
-2. Or use the Manager's Watch view → "Add Watch"
-3. Configure:
-   - **URL**: The page to monitor
-   - **Check interval**: How often to check (15 min, 30 min, 1 hour, 6 hours, 12 hours, 24 hours)
-   - **CSS Selector** (optional): Monitor only a specific section (e.g., `#price-tag`, `.news-feed`)
-   - **Notifications**: Whether to show Chrome notifications on change
+## Session Management
 
-### How It Works
+- **Save:** Popup → "Save Current Session"
+- **Restore:** Popup → "Restore Last Session"
 
-1. Every 15 minutes, the extension checks which watches are due
-2. For each due watch, it fetches the page HTML via network request
-3. Text content is extracted (optionally filtered by CSS selector)
-4. An FNV-1a hash is computed and compared to the last known hash
-5. If different → change detected → notification sent (if enabled)
+---
 
-### Managing Watches
+## Dashboard
 
-In the Manager's Watch view:
-- **Check Now**: Force an immediate check
-- **Pause/Resume**: Temporarily stop monitoring
-- **Edit**: Change interval or CSS selector
-- **Delete**: Remove the watch entirely
-- **View History**: See change count and last change time
-
-### Notifications
-
-When a watched page changes:
-- A Chrome notification appears with the page title
-- Click the notification to open the changed page in a new tab
-- The notification is automatic and works even when no Recall UI is open
+Total/daily/weekly stats, 30-day chart, top domains, storage breakdown. Access from Manager header.
 
 ---
 
 ## Side Panel
 
-The Chrome Side Panel provides quick access to your snapshots without leaving your current tab.
-
-### Opening
-
-- Click the Recall icon → "Open Side Panel"
-- Or use Chrome's side panel button (if pinned)
-
-### Features
-
-- Searchable list of all snapshots
-- Domain filter dropdown
-- Sort by date
-- Thumbnail previews
-- Click to open in viewer
-- Delete individual snapshots
-- Compact design for side-by-side browsing
+Searchable snapshot list alongside browsing. Quick capture, domain filter, sort.
 
 ---
 
 ## Extension Popup
 
-Click the Recall toolbar icon to see the popup.
-
-### Quick Actions
-
-- **Capture Page**: Manual capture of current tab
-- **Deep Capture**: Deep capture of current tab
-- **Watch Page**: Start watching current page for changes
-- **Open Side Panel**: Opens the side panel
-- **Open Manager**: Opens the full Snapshot Manager
-- **Settings**: Opens the Settings page
-
-### Status Bar
-
-- Auto-capture toggle (on/off)
-- Storage usage bar showing current usage vs. quota
+Quick actions: Capture, Deep Capture, Read Later, Watch, Save All Tabs, Side Panel, Manager, Sessions, Settings, Auto-Capture toggle.
 
 ---
 
 ## Settings
 
-Access Settings via the popup → "Settings" button.
-
-### Capture Settings
-
-| Setting | Description |
-|---------|-------------|
-| Auto-Capture | Enable/disable automatic page capture |
-| Capture Delay | Time to wait after page load before capturing (ms) |
-| Max Snapshot Size | Skip pages larger than this (MB) |
-| Duplicate Window | Skip same URL within this time period (minutes) |
-
-### Storage Settings
-
-| Setting | Description |
-|---------|-------------|
-| Max Storage | Maximum total storage quota (MB) |
-| Auto-Cleanup | Enable automatic cleanup when quota is reached |
-| Cleanup Threshold | Usage percentage that triggers cleanup (e.g., 90%) |
-| Time-Based Cleanup | Auto-delete auto-captures older than N days (0 = disabled) |
-
-### Domain Exclusions
-
-- Add domains that should never be captured
-- Supports partial matching (e.g., "google.com" excludes all Google subdomains)
-- Default exclusions: Chrome Web Store, extension pages
-
-### Thumbnail Settings
-
-- Quality: JPEG compression quality (0.1 - 1.0)
-- Max dimensions: Maximum width and height in pixels
-
-### Data Management
-
-- **Export Data**: Download all snapshots and settings
-- **Delete All**: Remove all snapshots (requires confirmation)
-
-### Saving
-
-- Click "Save" or press `Ctrl+S`
-- Unsaved changes show a warning bar at the bottom
+Language, capture, storage, domain exclusions, thumbnails, AI, theme, notifications, data backup.
 
 ---
 
 ## Storage Management
 
-### Understanding Storage Usage
-
-- Each snapshot typically uses 50-200KB (compressed)
-- Deep captures use 200KB-5MB depending on page complexity
-- Thumbnails add ~10-30KB per snapshot
-- Text content for search adds ~5-50KB per snapshot
-
-### Monitoring Usage
-
-- Popup shows a storage usage bar
-- Manager shows total count and storage used
-- Settings shows detailed storage statistics
-
-### Cleanup Strategies
-
-1. **Automatic quota cleanup**: When storage reaches 90% (configurable), oldest non-starred auto-captures are deleted until usage drops to 80%
-2. **Time-based cleanup**: Optionally delete auto-captures older than N days
-3. **Manual cleanup**: Delete individual snapshots or bulk-select and delete
-4. **Star protection**: Starred snapshots are never auto-deleted
-
-### Best Practices
-
-- Star important snapshots to protect them from cleanup
-- Use manual capture for pages you definitely want to keep
-- Adjust the storage quota based on your available disk space
-- Set a reasonable time-based cleanup (e.g., 30 or 90 days)
-- Periodically review and clean up unnecessary snapshots
+- Standard: 50-200KB, Deep: 200KB-5MB
+- Quota cleanup (≥90%), time cleanup, manual, trash (30-day), star protection
 
 ---
 
-## Dark Mode
+## Dark Mode & Themes
 
-Recall supports full dark and light themes.
+Sun/moon icon toggle. System preference detection. 6 color palettes in Settings.
 
-### Toggling
+---
 
-- Click the theme toggle button (sun/moon icon) in any Recall page
-- Available in: Manager, Viewer, Diff, Settings, Side Panel
+## Language / i18n
 
-### Behavior
+Settings → Language → English/Tiếng Việt → Save. All pages update on reload.
 
-- **First visit**: Automatically follows your system preference (`prefers-color-scheme`)
-- **After toggle**: Your choice is saved in localStorage and persists
-- **System changes**: If you haven't manually toggled, Recall follows system changes automatically
+---
+
+## Backup & Restore
+
+- **Export:** Settings → "Export Backup" → ZIP
+- **Import:** Settings → "Import Backup" → select ZIP
 
 ---
 
 ## Tips & Tricks
 
-### Power User Workflows
-
-1. **Research sessions**: Use auto-capture + Flow View to retrace your research paths
-2. **Price monitoring**: Set up Page Watch with `#price` CSS selector to track prices
-3. **Content archival**: Use Deep Capture for important pages before they might change
-4. **Quick recall**: `Ctrl+Space` on any page to instantly search your browsing history
-5. **Comparison**: Capture a page before and after changes, then use Diff to compare
-
-### Keyboard-First Usage
-
-1. `Ctrl+Space` → Type query → `Arrow keys` → `Enter` — Full search and open without touching the mouse
-2. `Ctrl+Shift+S` — Quick-save current page
-3. `Ctrl+Shift+R` — Jump to Manager
-
-### Customizing Shortcuts
-
-1. Go to `chrome://extensions/shortcuts`
-2. Find "Recall - Web Page Snapshots"
-3. Click the pencil icon next to any command
-4. Press your desired key combination
-5. Click OK
+1. Research: Auto-capture + Flow View
+2. Price monitoring: Watch page + CSS selector
+3. Archival: Deep Capture for important pages
+4. Quick recall: `Ctrl+Space` → search → Enter
+5. AI: `/ai summarize recent browsing` in Spotlight
+6. Tab management: Save/restore sessions
 
 ---
 
 ## Troubleshooting
 
-### Auto-Capture Not Working
-
-1. Check if auto-capture is enabled (popup toggle or Settings)
-2. Check if the domain is in the exclusion list
-3. Check if the URL protocol is excluded (chrome://, about://, etc.)
-4. Verify the extension has the required permissions
-5. Check the console for errors: right-click Recall icon → "Inspect" → Console tab
-
-### Deep Capture Fails
-
-1. Some pages block debugger attachment (e.g., Chrome internal pages)
-2. Try refreshing the page first
-3. Check if another DevTools debugger is already attached
-4. Cross-origin resources may partially fail (this is normal)
-
-### Spotlight Not Appearing
-
-1. The shortcut `Ctrl+Space` may conflict with another extension or system shortcut
-2. Customize the shortcut at `chrome://extensions/shortcuts`
-3. Content scripts cannot run on `chrome://` pages or the Chrome Web Store
-
-### Storage Full
-
-1. Open Settings → check storage usage
-2. Delete unnecessary snapshots from Manager
-3. Increase the storage quota in Settings
-4. Enable time-based cleanup to auto-delete old captures
-5. Reduce max snapshot size to skip very large pages
-
-### Extension Icon Shows "X" (Red)
-
-This means a capture failed. Common reasons:
-- Tab was closed before capture completed
-- Page was too large (exceeds max snapshot size)
-- Content script couldn't access the page (restricted page)
-- Network error during CSS/image inlining
-
-### Snapshots Look Different From Original
-
-- Standard capture removes JavaScript — dynamic content won't work
-- Cross-origin images may show placeholders
-- CSS that depends on JavaScript execution may not apply
-- **Solution**: Use Deep Capture for better fidelity
+- **Auto-capture not working:** Check toggle, domain exclusions, service worker console
+- **Deep capture fails:** Page may block debugger; refresh first
+- **Spotlight missing:** Shortcut conflict; customize at `chrome://extensions/shortcuts`
+- **AI not working:** Check API key, model, internet, service worker console
+- **Language stuck:** Save settings, reload pages
+- **Storage full:** Delete from Manager, enable time cleanup, increase quota, empty trash
