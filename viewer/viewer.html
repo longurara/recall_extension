@@ -72,6 +72,13 @@
             <path d="M13 9v-1" stroke="currentColor" stroke-width="1" />
           </svg>
         </button>
+        <button id="btn-insights" class="btn btn-icon" title="AI Page Insights">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 1a4 4 0 014 4c0 2-1.5 3-2 4H6c-.5-1-2-2-2-4a4 4 0 014-4z" stroke="currentColor"
+              stroke-width="1.5" stroke-linejoin="round" />
+            <path d="M6 12h4M7 14h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+        </button>
         <button id="btn-notes" class="btn btn-icon" data-i18n-title="viewer-notes" title="Toggle notes panel">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M3 2h10a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor"
@@ -84,6 +91,13 @@
             <path d="M2 10.5V14h3.5L13 6.5 9.5 3 2 10.5z" stroke="currentColor" stroke-width="1.5"
               stroke-linejoin="round" />
             <path d="M9.5 3l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+        </button>
+        <button id="btn-draw" class="btn btn-icon" title="Screenshot Annotator">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M2 11.5l7.5-7.5 2.5 2.5-7.5 7.5H2v-2.5z" stroke="currentColor" stroke-width="1.5"
+              stroke-linejoin="round" />
+            <path d="M9 4.5l2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
           </svg>
         </button>
         <button id="btn-star" class="btn btn-icon" title="Star this snapshot">
@@ -168,6 +182,26 @@
     </div>
   </div>
 
+  <!-- AI Insights Panel -->
+  <div id="insights-panel" class="summary-panel hidden">
+    <div class="summary-header">
+      <span>💡 AI Insights</span>
+      <button id="btn-close-insights" class="btn btn-icon btn-sm" title="Close insights">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
+      </button>
+    </div>
+    <div id="insights-content" class="summary-content">
+      <p class="summary-placeholder">Click "Generate" to get deep AI insights: key takeaways, concepts, review
+        questions, and more.</p>
+    </div>
+    <div class="summary-footer">
+      <button id="btn-generate-insights" class="btn btn-primary-sm">Generate Insights</button>
+      <span id="insights-status" class="summary-status"></span>
+    </div>
+  </div>
+
   <!-- Floating annotation toolbar (appears on text selection in iframe) -->
   <div id="annotation-toolbar" class="annotation-toolbar hidden">
     <button class="ann-color-btn" data-color="#fef08a" title="Yellow" style="background:#fef08a"></button>
@@ -177,8 +211,29 @@
     <button class="ann-color-btn" data-color="#e9d5ff" title="Purple" style="background:#e9d5ff"></button>
   </div>
 
-  <!-- Snapshot content iframe -->
-  <iframe id="snapshot-frame" class="snapshot-frame" sandbox="allow-same-origin" frameborder="0" referrerpolicy="no-referrer"></iframe>
+  <!-- Screenshot Annotator Toolbar -->
+  <div id="draw-toolbar" class="draw-toolbar hidden">
+    <div class="draw-tools">
+      <button class="draw-tool active" data-tool="pen" title="Freehand">✏️</button>
+      <button class="draw-tool" data-tool="arrow" title="Arrow">↗️</button>
+      <button class="draw-tool" data-tool="rect" title="Rectangle">⬜</button>
+      <button class="draw-tool" data-tool="text" title="Text">T</button>
+    </div>
+    <div class="draw-sep"></div>
+    <input type="color" id="draw-color" class="draw-color" value="#ef4444" title="Color">
+    <input type="range" id="draw-size" class="draw-size" min="1" max="12" value="3" title="Size">
+    <div class="draw-sep"></div>
+    <button id="btn-draw-undo" class="draw-action" title="Undo">↩️</button>
+    <button id="btn-draw-clear" class="draw-action" title="Clear">🗑️</button>
+    <button id="btn-draw-export" class="draw-action draw-export" title="Export as PNG">📥 Export</button>
+  </div>
+
+  <!-- Snapshot content iframe + Draw Canvas -->
+  <div id="snapshot-wrapper" class="snapshot-wrapper">
+    <iframe id="snapshot-frame" class="snapshot-frame" sandbox="allow-same-origin" frameborder="0"
+      referrerpolicy="no-referrer"></iframe>
+    <canvas id="draw-canvas" class="draw-canvas hidden"></canvas>
+  </div>
 
   <!-- Loading overlay -->
   <div id="loading" class="loading">

@@ -71,6 +71,113 @@ function enforceAiPolicy({ domain, url, settings, confirmed }) {
   }
 }
 
+/**
+ * Reusable AI API call — single prompt → single response.
+ * Supports Google Gemini, OpenAI, and custom (OpenAI-compatible) endpoints.
+ */
+async function callAI(settings, prompt, { maxTokens = 800, temperature = 0.3 } = {}) {
+  if (settings.aiProvider === 'google') {
+    const model = settings.aiModel || 'gemini-2.0-flash';
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${settings.aiApiKey}`;
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: maxTokens, temperature },
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error?.message || `Google API error ${resp.status}`);
+    }
+    const data = await resp.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  }
+
+  if (settings.aiProvider === 'openai' || settings.aiProvider === 'custom') {
+    const endpoint = settings.aiProvider === 'custom'
+      ? settings.aiApiEndpoint
+      : 'https://api.openai.com/v1/chat/completions';
+    const model = settings.aiModel || 'gpt-3.5-turbo';
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${settings.aiApiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: maxTokens,
+        temperature,
+      }),
+    });
+    const data = await resp.json();
+    return data.choices?.[0]?.message?.content || '';
+  }
+
+  throw new Error('AI provider not configured. Go to Settings → AI Summary.');
+}
+
+/**
+ * Reusable AI chat with system prompt — for multi-turn conversations.
+ */
+async function callAIChatWithSystem(settings, systemPrompt, messages, { maxTokens = 1024, temperature = 0.5 } = {}) {
+  if (settings.aiProvider === 'google') {
+    const model = settings.aiModel || 'gemini-2.0-flash';
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${settings.aiApiKey}`;
+    const geminiContents = [
+      { role: 'user', parts: [{ text: systemPrompt }] },
+      { role: 'model', parts: [{ text: 'Understood. I will follow these instructions.' }] },
+    ];
+    for (const msg of messages) {
+      geminiContents.push({
+        role: msg.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: msg.content }],
+      });
+    }
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: geminiContents,
+        generationConfig: { maxOutputTokens: maxTokens, temperature },
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error?.message || `Google API error ${resp.status}`);
+    }
+    const data = await resp.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated.';
+  }
+
+  if (settings.aiProvider === 'openai' || settings.aiProvider === 'custom') {
+    const endpoint = settings.aiProvider === 'custom'
+      ? settings.aiApiEndpoint
+      : 'https://api.openai.com/v1/chat/completions';
+    const model = settings.aiModel || 'gpt-3.5-turbo';
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${settings.aiApiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'system', content: systemPrompt }, ...messages],
+        max_tokens: maxTokens,
+        temperature,
+      }),
+    });
+    const data = await resp.json();
+    return data.choices?.[0]?.message?.content || 'No response generated.';
+  }
+
+  throw new Error('AI provider not configured for chat.');
+}
+
 // ============================================================
 // NAVIGATION FLOW TRACKING (in-memory per-tab session map)
 // ============================================================
@@ -567,11 +674,13 @@ chrome.commands.onCommand.addListener(async (command) => {
 async function blobToDataUrl(blob) {
   const buffer = await blob.arrayBuffer();
   const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  // Use chunk-based approach to avoid O(n²) string concatenation
+  const chunkSize = 8192;
+  const chunks = [];
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize)));
   }
-  return `data:${blob.type || 'image/jpeg'};base64,${btoa(binary)}`;
+  return `data:${blob.type || 'image/jpeg'};base64,${btoa(chunks.join(''))}`;
 }
 
 /**
@@ -757,10 +866,8 @@ async function handleMessage(message, sender) {
     }
 
     case MSG.DELETE_SNAPSHOTS: {
-      // Soft delete all
-      for (const id of message.ids) {
-        await db.updateSnapshot(id, { isDeleted: true, deletedAt: Date.now() });
-      }
+      // Soft delete all in a single transaction
+      await db.updateSnapshots(message.ids, { isDeleted: true, deletedAt: Date.now() });
       chrome.runtime.sendMessage({
         type: MSG.SNAPSHOT_DELETED,
         ids: message.ids,
@@ -781,16 +888,14 @@ async function handleMessage(message, sender) {
 
     // ---------- Trash / Soft Delete ----------
     case MSG.GET_TRASH: {
-      const allSnaps = await db.getAllSnapshots();
+      const allSnaps = await db.getAllSnapshots({ includeDeleted: true });
       const trashed = allSnaps.filter(s => s.isDeleted);
       return Promise.all(trashed.map(migrateThumbnail));
     }
 
     case MSG.RESTORE_SNAPSHOT: {
       if (message.ids) {
-        for (const id of message.ids) {
-          await db.updateSnapshot(id, { isDeleted: false, deletedAt: null });
-        }
+        await db.updateSnapshots(message.ids, { isDeleted: false, deletedAt: null });
         return { restored: message.ids };
       }
       await db.updateSnapshot(message.id, { isDeleted: false, deletedAt: null });
@@ -807,7 +912,7 @@ async function handleMessage(message, sender) {
     }
 
     case MSG.EMPTY_TRASH: {
-      const allSnaps = await db.getAllSnapshots();
+      const allSnaps = await db.getAllSnapshots({ includeDeleted: true });
       const trashIds = allSnaps.filter(s => s.isDeleted).map(s => s.id);
       if (trashIds.length > 0) {
         await db.deleteSnapshots(trashIds);
@@ -1185,15 +1290,11 @@ async function handleMessage(message, sender) {
     }
 
     case MSG.SAVE_AUTO_TAG_RULES: {
-      // Save all rules (replace all)
-      const existingRules = await db.getAllAutoTagRules();
-      for (const r of existingRules) {
-        await db.deleteAutoTagRule(r.id);
-      }
-      for (const rule of message.rules) {
-        if (!rule.id) rule.id = generateId();
-        await db.saveAutoTagRule(rule);
-      }
+      // Save all rules (replace all) in a single transaction
+      const rules = message.rules.map(rule =>
+        rule.id ? rule : { ...rule, id: generateId() }
+      );
+      await db.replaceAllAutoTagRules(rules);
       return { saved: true };
     }
 
@@ -1543,6 +1644,298 @@ Instructions:
     // ---------- Dashboard ----------
     case MSG.GET_DASHBOARD_STATS: {
       return db.getDashboardStats();
+    }
+
+    // ---------- AI Enhanced Features ----------
+
+    case MSG.AI_AUTO_TAG: {
+      const settings = await db.getAllSettings();
+      if (!settings.aiProvider || settings.aiProvider === 'none') return { tags: [] };
+      if (!settings.aiApiKey) return { tags: [] };
+
+      const snap = await db.getSnapshotData(message.id);
+      const meta = await db.getSnapshot(message.id);
+      if (!snap?.textContent || !meta) return { tags: [] };
+
+      const text = snap.textContent.substring(0, 4000);
+      const prompt = `Analyze this web page and suggest 3-5 short tags (single words or two-word phrases) that categorize it. Return ONLY a JSON array of lowercase strings, nothing else.
+
+Title: ${meta.title}
+Domain: ${meta.domain}
+URL: ${meta.url}
+
+Content:
+${text}
+
+Example response: ["javascript", "tutorial", "react hooks", "web development", "performance"]`;
+
+      try {
+        const result = await callAI(settings, prompt);
+        // Parse JSON array from response
+        const match = result.match(/\[[\s\S]*?\]/);
+        if (match) {
+          const tags = JSON.parse(match[0])
+            .filter(t => typeof t === 'string' && t.length > 0 && t.length < 30)
+            .map(t => t.toLowerCase().trim())
+            .slice(0, 5);
+
+          // Merge with existing tags
+          const existingTags = meta.tags || [];
+          const newTags = [...new Set([...existingTags, ...tags])];
+          await db.updateSnapshot(message.id, { tags: newTags, aiTagged: true });
+          return { tags: newTags };
+        }
+      } catch (e) {
+        console.warn('[Recall] AI Auto-Tag failed:', e.message);
+      }
+      return { tags: meta.tags || [] };
+    }
+
+    case MSG.AI_SEMANTIC_SEARCH: {
+      const settings = await db.getAllSettings();
+      if (!settings.aiProvider || settings.aiProvider === 'none') {
+        throw new Error('No AI provider configured.');
+      }
+      if (!settings.aiApiKey) throw new Error('API key not configured.');
+
+      const { query } = message;
+      if (!query) throw new Error('No search query provided.');
+
+      // Get all snapshots metadata
+      const allSnaps = await db.getAllSnapshots();
+      if (allSnaps.length === 0) return { results: [] };
+
+      // Build a concise catalog of snapshots for AI
+      const catalog = allSnaps.slice(0, 200).map((s, i) => {
+        const date = new Date(s.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        return `${i}: "${s.title}" (${s.domain}) [${date}] ${(s.tags || []).join(', ')}`;
+      }).join('\n');
+
+      const prompt = `You are a search assistant. The user is searching their saved web page snapshots.
+
+User query: "${query}"
+
+Here are the saved snapshots (index: title (domain) [date] tags):
+${catalog}
+
+Return ONLY a JSON array of the indices (numbers) of the most relevant snapshots, ordered by relevance. Return at most 10 results. If nothing matches, return [].
+
+Example: [5, 12, 0, 34]`;
+
+      const result = await callAI(settings, prompt);
+      const match = result.match(/\[[\s\S]*?\]/);
+      if (match) {
+        const indices = JSON.parse(match[0]).filter(i => typeof i === 'number' && i >= 0 && i < allSnaps.length);
+        const results = indices.slice(0, 10).map(i => allSnaps[i]);
+        // Migrate thumbnails
+        await Promise.all(results.map(migrateThumbnail));
+        return { results };
+      }
+      return { results: [] };
+    }
+
+    case MSG.AI_WEEKLY_DIGEST: {
+      const settings = await db.getAllSettings();
+      if (!settings.aiProvider || settings.aiProvider === 'none') {
+        throw new Error('No AI provider configured.');
+      }
+      if (!settings.aiApiKey) throw new Error('API key not configured.');
+
+      const allSnaps = await db.getAllSnapshots();
+      const oneWeek = 7 * 86400000;
+      const now = Date.now();
+      const weekSnaps = allSnaps.filter(s => now - s.timestamp < oneWeek);
+
+      if (weekSnaps.length === 0) {
+        return { digest: 'No snapshots captured this week.' };
+      }
+
+      // Build stats
+      const domainMap = new Map();
+      const typeMap = new Map();
+      const dayMap = new Map();
+      for (const s of weekSnaps) {
+        domainMap.set(s.domain, (domainMap.get(s.domain) || 0) + 1);
+        const t = s.captureType || 'auto';
+        typeMap.set(t, (typeMap.get(t) || 0) + 1);
+        const day = new Date(s.timestamp).toLocaleDateString('en-US', { weekday: 'short' });
+        dayMap.set(day, (dayMap.get(day) || 0) + 1);
+      }
+
+      const topDomains = Array.from(domainMap.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([d, c]) => `${d}: ${c} pages`).join(', ');
+
+      const titles = weekSnaps.slice(0, 30).map(s =>
+        `"${s.title}" (${s.domain})`
+      ).join('\n');
+
+      const langLabel = settings.language === 'vi' ? 'Vietnamese' : 'English';
+
+      const prompt = `Create a weekly browsing digest report for this user. Be insightful and friendly.
+
+Stats:
+- Total pages captured: ${weekSnaps.length}
+- Top domains: ${topDomains}
+- Capture types: ${Array.from(typeMap.entries()).map(([t, c]) => `${t}: ${c}`).join(', ')}
+- Activity by day: ${Array.from(dayMap.entries()).map(([d, c]) => `${d}: ${c}`).join(', ')}
+- Starred: ${weekSnaps.filter(s => s.isStarred).length}
+- Read Later: ${weekSnaps.filter(s => s.isReadLater).length}
+
+Recent page titles:
+${titles}
+
+Instructions:
+- Write a 4-6 paragraph digest with emoji headers
+- Include: overview, top interests/themes, notable pages, browsing patterns, tips
+- ALWAYS write in ${langLabel}
+- Use markdown formatting`;
+
+      const digest = await callAI(settings, prompt, { maxTokens: 1500 });
+      return { digest, stats: { total: weekSnaps.length, domains: domainMap.size } };
+    }
+
+    case MSG.AI_PAGE_INSIGHTS: {
+      const settings = await db.getAllSettings();
+      if (!settings.aiProvider || settings.aiProvider === 'none') {
+        throw new Error('No AI provider configured.');
+      }
+      if (!settings.aiApiKey) throw new Error('API key not configured.');
+
+      const snap = await db.getSnapshotData(message.id);
+      const meta = await db.getSnapshot(message.id);
+      if (!snap?.textContent || !meta) throw new Error('No content for this snapshot.');
+
+      enforceAiPolicy({ domain: meta.domain, url: meta.url, settings, confirmed: message.confirmed });
+
+      const text = snap.textContent.substring(0, 8000);
+      const langLabel = settings.language === 'vi' ? 'Vietnamese' : 'English';
+
+      const prompt = `Analyze this web page in depth and provide structured insights.
+
+Title: ${meta.title}
+URL: ${meta.url}
+Domain: ${meta.domain}
+
+Content:
+${text}
+
+Provide the following sections in markdown format:
+
+## 📌 Key Takeaways
+- List 3-5 most important points
+
+## 🧠 Core Concepts
+- List the main concepts/topics discussed
+
+## ❓ Review Questions
+- Generate 3 questions to test understanding
+
+## 🔗 Related Topics
+- Suggest related topics the reader might want to explore
+
+## 💡 Quick Summary
+- 2-3 sentence summary
+
+ALWAYS write in ${langLabel}. Use markdown formatting.`;
+
+      const insights = await callAI(settings, prompt, { maxTokens: 1500 });
+
+      // Save insights to metadata
+      await db.updateSnapshot(message.id, { aiInsights: insights });
+      return { insights };
+    }
+
+    case MSG.AI_MEMORY_CHAT: {
+      const { question, chatHistory } = message;
+      if (!question) throw new Error('No question provided');
+
+      const settings = await db.getAllSettings();
+      if (!settings.aiProvider || settings.aiProvider === 'none') {
+        throw new Error('No AI provider configured. Go to Settings → AI Summary to set up.');
+      }
+      if (!settings.aiApiKey) throw new Error('API key not configured.');
+
+      // Broad search: extract keywords from question
+      const keywords = question.toLowerCase()
+        .replace(/[^\w\sàáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ]/g, '')
+        .split(/\s+/)
+        .filter(w => w.length > 2);
+
+      const allSnaps = await db.getAllSnapshots();
+
+      // Score all snapshots against the question
+      const scored = allSnaps.map(s => {
+        const haystack = `${s.title} ${s.url} ${s.domain} ${(s.tags || []).join(' ')} ${s.aiSummary || ''}`.toLowerCase();
+        const score = keywords.reduce((acc, kw) => acc + (haystack.includes(kw) ? 1 : 0), 0);
+        return { snap: s, score };
+      })
+        .filter(x => x.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5);
+
+      // Get text snippets for top matches
+      const relatedContext = [];
+      for (const { snap: s } of scored) {
+        try {
+          const data = await db.getSnapshotData(s.id);
+          const text = data?.textContent?.substring(0, 2000) || '';
+          const date = new Date(s.timestamp).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+          relatedContext.push(`### "${s.title}" (${s.domain}, ${date})\n${text}`);
+        } catch { /* skip */ }
+      }
+
+      // Also add overall stats for context
+      const totalSnaps = allSnaps.length;
+      const oneWeek = 7 * 86400000;
+      const weekSnaps = allSnaps.filter(s => Date.now() - s.timestamp < oneWeek).length;
+      const topDomains = [];
+      const domainMap = new Map();
+      for (const s of allSnaps) domainMap.set(s.domain, (domainMap.get(s.domain) || 0) + 1);
+      Array.from(domainMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5)
+        .forEach(([d, c]) => topDomains.push(`${d} (${c})`));
+
+      const langLabel = settings.language === 'vi' ? 'Vietnamese' : 'English';
+
+      const systemPrompt = `You are Recall Memory Assistant — an AI that helps the user remember and explore their browsing history. You have access to their saved web page snapshots.
+
+USER'S BROWSING STATS:
+- Total saved snapshots: ${totalSnaps}
+- This week: ${weekSnaps}
+- Top domains: ${topDomains.join(', ')}
+
+${relatedContext.length > 0 ? 'RELATED SAVED PAGES:\n\n' + relatedContext.join('\n\n---\n\n') : 'No directly related saved pages found for this query.'}
+
+Instructions:
+- Help the user recall information from their browsing history
+- Reference specific page titles when relevant
+- Be conversational and helpful
+- If you can't find relevant pages, suggest what the user might search for
+- Use markdown formatting
+- ALWAYS answer in ${langLabel}`;
+
+      // Build messages
+      const messages = [];
+      if (chatHistory?.length > 0) {
+        for (const entry of chatHistory.slice(-8)) {
+          messages.push({ role: entry.role, content: entry.content });
+        }
+      }
+      messages.push({ role: 'user', content: question });
+
+      const answer = await callAIChatWithSystem(settings, systemPrompt, messages);
+
+      return {
+        answer,
+        relatedSnapshots: scored.map(({ snap: s }) => ({
+          id: s.id,
+          title: s.title,
+          url: s.url,
+          domain: s.domain,
+          timestamp: s.timestamp,
+        })),
+      };
     }
 
     // ---------- Snapshot Links ----------

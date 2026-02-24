@@ -260,6 +260,12 @@ function render() {
     return;
   }
 
+  // Timeline view
+  if (viewMode === 'timeline') {
+    renderTimelineView();
+    return;
+  }
+
   if (allSnapshots.length === 0) {
     container.classList.add('hidden');
     emptyState.classList.remove('hidden');
@@ -589,6 +595,7 @@ function setViewMode(mode) {
   document.getElementById('btn-sessions').classList.toggle('active', mode === 'sessions');
   document.getElementById('btn-calendar').classList.toggle('active', mode === 'calendar');
   document.getElementById('btn-trash').classList.toggle('active', mode === 'trash');
+  document.getElementById('btn-timeline').classList.toggle('active', mode === 'timeline');
 
   if (mode === 'flow') {
     loadFlows().then(() => render());
@@ -604,6 +611,8 @@ function setViewMode(mode) {
     render();
   } else if (mode === 'trash') {
     render();
+  } else if (mode === 'timeline') {
+    render();
   } else {
     cachedFlows = null;
     cachedWatchedPages = null;
@@ -613,6 +622,7 @@ function setViewMode(mode) {
 
 document.getElementById('btn-grid').addEventListener('click', () => setViewMode('grid'));
 document.getElementById('btn-list').addEventListener('click', () => setViewMode('list'));
+document.getElementById('btn-timeline').addEventListener('click', () => setViewMode('timeline'));
 document.getElementById('btn-flow').addEventListener('click', () => setViewMode('flow'));
 document.getElementById('btn-watch').addEventListener('click', () => setViewMode('watch'));
 document.getElementById('btn-collections').addEventListener('click', () => setViewMode('collections'));
@@ -1057,10 +1067,18 @@ async function renderCollectionsView() {
 
     if (!collections || collections.length === 0) {
       container.innerHTML = `
-        <div class="collections-empty">
-          <h3>No collections yet</h3>
-          <p>Create your first collection to organize snapshots.</p>
+        <div class="collections-header-bar">
+          <h3>Collections</h3>
           <button id="btn-create-collection" class="btn btn-primary-sm">+ New Collection</button>
+        </div>
+        <div class="collections-empty">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <rect x="6" y="10" width="36" height="28" rx="4" stroke="#ddd" stroke-width="2"/>
+            <path d="M6 18h36" stroke="#ddd" stroke-width="2"/>
+            <path d="M18 10V6h12v4" stroke="#ddd" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <h3>No collections yet</h3>
+          <p>Create your first collection to organize snapshots. Group related pages together for easy access.</p>
         </div>
       `;
       resultCount.textContent = '0 collections';
@@ -1071,6 +1089,7 @@ async function renderCollectionsView() {
     resultCount.textContent = `${collections.length} collections`;
 
     let html = `<div class="collections-header-bar">
+      <h3>Collections</h3>
       <button id="btn-create-collection" class="btn btn-primary-sm">+ New Collection</button>
     </div>`;
 
@@ -1142,14 +1161,20 @@ async function createCollection() {
 async function renderReadingListView() {
   container.classList.remove('hidden');
   emptyState.classList.add('hidden');
-  container.className = 'snapshot-container grid-view';
+  container.className = 'snapshot-container reading-list-view';
 
   try {
     const readLaterItems = await sendMessage({ type: MSG.GET_READ_LATER });
 
     if (!readLaterItems || readLaterItems.length === 0) {
       container.innerHTML = `
+        <div class="reading-list-header-bar">
+          <h3>Reading List</h3>
+        </div>
         <div class="reading-list-empty">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <path d="M12 6h24a2 2 0 0 1 2 2v32l-14-8-14 8V8a2 2 0 0 1 2-2Z" stroke="#ddd" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
           <h3>Reading list is empty</h3>
           <p>Save pages for later using the "Read Later" button in the popup or right-click menu.</p>
         </div>
@@ -1160,16 +1185,20 @@ async function renderReadingListView() {
 
     resultCount.textContent = `${readLaterItems.length} saved for later`;
 
-    const fragment = document.createDocumentFragment();
+    const headerDiv = document.createElement('div');
+    headerDiv.innerHTML = `<div class="reading-list-header-bar"><h3>Reading List</h3></div>`;
+
+    const gridDiv = document.createElement('div');
+    gridDiv.className = 'reading-list-grid';
     for (const s of readLaterItems) {
       const el = createGridItem(s);
-      // Add read/unread indicator
       if (s.isRead) el.classList.add('is-read');
-      fragment.appendChild(el);
+      gridDiv.appendChild(el);
     }
 
     container.innerHTML = '';
-    container.appendChild(fragment);
+    container.appendChild(headerDiv);
+    container.appendChild(gridDiv);
   } catch (e) {
     console.error('[Manager] Reading list error:', e);
     container.innerHTML = '<p>Error loading reading list.</p>';
@@ -1448,6 +1477,122 @@ function showDaySnapshots(year, month, day) {
 }
 
 // ============================================================
+// Timeline View
+// ============================================================
+
+function renderTimelineView() {
+  container.className = 'snapshot-container timeline-view';
+  emptyState.classList.add('hidden');
+  container.classList.remove('hidden');
+
+  const snapshots = filteredSnapshots.length > 0 ? filteredSnapshots : allSnapshots;
+
+  if (!snapshots || snapshots.length === 0) {
+    container.innerHTML = `
+      <div class="timeline-empty">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+          <path d="M24 4v40" stroke="#ddd" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="24" cy="12" r="4" stroke="#ddd" stroke-width="2"/>
+          <circle cx="24" cy="24" r="4" stroke="#ddd" stroke-width="2"/>
+          <circle cx="24" cy="36" r="4" stroke="#ddd" stroke-width="2"/>
+        </svg>
+        <h3>No snapshots for timeline</h3>
+        <p>Capture some pages first, then view them on your browsing timeline.</p>
+      </div>
+    `;
+    return;
+  }
+
+  // Group by day
+  const dayGroups = new Map();
+  for (const s of snapshots) {
+    const date = new Date(s.timestamp);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    if (!dayGroups.has(key)) dayGroups.set(key, []);
+    dayGroups.get(key).push(s);
+  }
+
+  // Sort days newest first
+  const sortedDays = Array.from(dayGroups.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const formatDayLabel = (dateStr) => {
+    const d = new Date(dateStr + 'T00:00:00');
+    if (d.toDateString() === today.toDateString()) return 'Today';
+    if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  let html = '<div class="timeline-wrapper">';
+
+  for (const [dateStr, daySnapshots] of sortedDays) {
+    const dayLabel = formatDayLabel(dateStr);
+    const dayCount = daySnapshots.length;
+
+    html += `
+      <div class="timeline-day">
+        <div class="timeline-day-header">
+          <div class="timeline-day-dot"></div>
+          <div class="timeline-day-label">${dayLabel}</div>
+          <div class="timeline-day-count">${dayCount} snapshot${dayCount !== 1 ? 's' : ''}</div>
+        </div>
+        <div class="timeline-day-items">
+    `;
+
+    for (let i = 0; i < daySnapshots.length; i++) {
+      const s = daySnapshots[i];
+      const time = new Date(s.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const side = i % 2 === 0 ? 'left' : 'right';
+
+      let thumbHtml;
+      if (s.thumbnailDataUrl) {
+        thumbHtml = `<img class="timeline-thumb" src="${s.thumbnailDataUrl}" alt="" loading="lazy">`;
+      } else {
+        const ch = (s.domain || '?')[0].toUpperCase();
+        thumbHtml = `<div class="timeline-thumb-placeholder">${ch}</div>`;
+      }
+
+      const starBadge = s.isStarred ? '<span class="timeline-star">&#9733;</span>' : '';
+      const typeBadge = `<span class="timeline-type ${s.captureType || 'auto'}">${s.captureType || 'auto'}</span>`;
+
+      html += `
+        <div class="timeline-item timeline-${side}" data-id="${s.id}" style="--delay: ${Math.min(i * 50, 500)}ms">
+          <div class="timeline-connector"></div>
+          <div class="timeline-node"></div>
+          <div class="timeline-card">
+            ${thumbHtml}
+            <div class="timeline-card-body">
+              <div class="timeline-card-title">${escapeHtml(s.title || 'Untitled')}</div>
+              <div class="timeline-card-meta">
+                <span class="timeline-domain">${escapeHtml(s.domain)}</span>
+                ${typeBadge}
+                ${starBadge}
+              </div>
+              <div class="timeline-card-time">${time} · ${formatBytes(s.snapshotSize || 0)}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    html += '</div></div>';
+  }
+
+  html += '</div>';
+  container.innerHTML = html;
+
+  resultCount.textContent = `${snapshots.length} snapshots on timeline`;
+
+  // Click handlers
+  container.querySelectorAll('.timeline-item').forEach(el => {
+    el.addEventListener('click', () => openSnapshot(el.dataset.id));
+  });
+}
+
+// ============================================================
 // Trash View
 // ============================================================
 
@@ -1458,7 +1603,7 @@ async function renderTrashView() {
   try {
     const trashItems = await sendMessage({ type: MSG.GET_TRASH });
 
-    if (trashItems.length === 0) {
+    if (!trashItems || trashItems.length === 0) {
       container.innerHTML = `
         <div class="trash-empty">
           <svg width="48" height="48" viewBox="0 0 16 16" fill="none" style="opacity:0.3">
@@ -1564,6 +1709,431 @@ async function renderTrashView() {
     container.innerHTML = '<p>Error loading trash.</p>';
   }
 }
+
+// ============================================================
+// AI Memory Chat
+// ============================================================
+
+const aiChatPanel = document.getElementById('ai-chat-panel');
+const aiChatMessages = document.getElementById('ai-chat-messages');
+const aiChatInput = document.getElementById('ai-chat-input');
+const aiChatRelated = document.getElementById('ai-chat-related');
+let aiChatHistory = [];
+
+function toggleAiChat() {
+  aiChatPanel.classList.toggle('hidden');
+  if (!aiChatPanel.classList.contains('hidden')) {
+    aiChatInput.focus();
+  }
+}
+
+function addChatMessage(role, content) {
+  const msgDiv = document.createElement('div');
+  msgDiv.className = `ai-msg ai-msg-${role}`;
+
+  if (role === 'assistant') {
+    // Simple markdown rendering
+    const html = content
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/`(.*?)`/g, '<code>$1</code>')
+      .replace(/^### (.*$)/gm, '<h4>$1</h4>')
+      .replace(/^## (.*$)/gm, '<h3>$1</h3>')
+      .replace(/^- (.*$)/gm, '<li>$1</li>')
+      .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
+      .replace(/\n\n/g, '<br><br>')
+      .replace(/\n/g, '<br>');
+    msgDiv.innerHTML = `<div class="ai-msg-avatar">🤖</div><div class="ai-msg-content">${html}</div>`;
+  } else {
+    msgDiv.innerHTML = `<div class="ai-msg-content">${escapeHtml(content)}</div><div class="ai-msg-avatar">👤</div>`;
+  }
+
+  // Remove welcome screen if present
+  const welcome = aiChatMessages.querySelector('.ai-chat-welcome');
+  if (welcome) welcome.remove();
+
+  aiChatMessages.appendChild(msgDiv);
+  aiChatMessages.scrollTop = aiChatMessages.scrollHeight;
+}
+
+function showChatTyping() {
+  const indicator = document.createElement('div');
+  indicator.className = 'ai-msg ai-msg-assistant ai-typing';
+  indicator.innerHTML = '<div class="ai-msg-avatar">🤖</div><div class="ai-msg-content"><span class="typing-dots"><span>.</span><span>.</span><span>.</span></span></div>';
+  aiChatMessages.appendChild(indicator);
+  aiChatMessages.scrollTop = aiChatMessages.scrollHeight;
+  return indicator;
+}
+
+function showRelatedSnapshots(snapshots) {
+  if (!snapshots || snapshots.length === 0) {
+    aiChatRelated.innerHTML = '';
+    return;
+  }
+  aiChatRelated.innerHTML = `
+    <div class="ai-related-label">📎 Related snapshots:</div>
+    ${snapshots.map(s => `
+      <a class="ai-related-item" href="#" data-id="${s.id}">
+        <span class="ai-related-title">${escapeHtml(s.title || 'Untitled')}</span>
+        <span class="ai-related-domain">${escapeHtml(s.domain)}</span>
+      </a>
+    `).join('')}
+  `;
+  aiChatRelated.querySelectorAll('.ai-related-item').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      openSnapshot(el.dataset.id);
+    });
+  });
+}
+
+async function sendAiChat(question) {
+  if (!question.trim()) return;
+  addChatMessage('user', question);
+  aiChatInput.value = '';
+  aiChatInput.disabled = true;
+
+  const typing = showChatTyping();
+
+  try {
+    const result = await sendMessage({
+      type: MSG.AI_MEMORY_CHAT,
+      question,
+      chatHistory: aiChatHistory,
+    });
+
+    typing.remove();
+    addChatMessage('assistant', result.answer);
+    showRelatedSnapshots(result.relatedSnapshots);
+
+    // Update chat history
+    aiChatHistory.push({ role: 'user', content: question });
+    aiChatHistory.push({ role: 'assistant', content: result.answer });
+  } catch (e) {
+    typing.remove();
+    addChatMessage('assistant', `❌ Error: ${e.message}`);
+  }
+
+  aiChatInput.disabled = false;
+  aiChatInput.focus();
+}
+
+// AI Chat event listeners
+document.getElementById('btn-ai-chat').addEventListener('click', toggleAiChat);
+document.getElementById('btn-close-chat').addEventListener('click', toggleAiChat);
+document.getElementById('btn-ai-send').addEventListener('click', () => sendAiChat(aiChatInput.value));
+aiChatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendAiChat(aiChatInput.value);
+});
+document.querySelectorAll('.ai-suggestion').forEach(btn => {
+  btn.addEventListener('click', () => sendAiChat(btn.dataset.q));
+});
+
+// ============================================================
+// Weekly Digest
+// ============================================================
+
+document.getElementById('btn-weekly-digest').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-weekly-digest');
+  const origText = btn.textContent;
+  btn.textContent = '⏳ Generating...';
+  btn.disabled = true;
+
+  try {
+    const result = await sendMessage({ type: MSG.AI_WEEKLY_DIGEST });
+
+    // Show digest in overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'digest-overlay';
+
+    const digestHtml = result.digest
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/`(.*?)`/g, '<code>$1</code>')
+      .replace(/^### (.*$)/gm, '<h4>$1</h4>')
+      .replace(/^## (.*$)/gm, '<h3>$1</h3>')
+      .replace(/^- (.*$)/gm, '<li>$1</li>')
+      .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
+      .replace(/\n\n/g, '<br><br>')
+      .replace(/\n/g, '<br>');
+
+    overlay.innerHTML = `
+      <div class="digest-modal">
+        <div class="digest-header">
+          <h2>📊 Weekly Digest</h2>
+          <button class="btn btn-ghost-sm digest-close">&times;</button>
+        </div>
+        <div class="digest-body">${digestHtml}</div>
+        <div class="digest-footer">
+          <span class="digest-stats">${result.stats?.total || 0} pages · ${result.stats?.domains || 0} domains this week</span>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+    overlay.querySelector('.digest-close').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  } catch (e) {
+    showAlert('Failed to generate digest: ' + e.message, { type: 'error', title: 'AI Error' });
+  }
+
+  btn.textContent = origText;
+  btn.disabled = false;
+});
+
+// ============================================================
+// AI Semantic Search (prefix with "ai:" in search box)
+// ============================================================
+
+const originalSearchHandler = document.getElementById('search-input');
+originalSearchHandler.setAttribute('placeholder', 'Search... (prefix "ai:" for AI search)');
+
+// Override search to handle ai: prefix
+const origSearchInput = document.getElementById('search-input');
+origSearchInput.addEventListener('keydown', async (e) => {
+  if (e.key === 'Enter' && origSearchInput.value.startsWith('ai:')) {
+    e.preventDefault();
+    e.stopPropagation();
+    const query = origSearchInput.value.substring(3).trim();
+    if (!query) return;
+
+    resultCount.textContent = '🔍 AI searching...';
+    try {
+      const result = await sendMessage({ type: MSG.AI_SEMANTIC_SEARCH, query });
+      if (result.results && result.results.length > 0) {
+        filteredSnapshots = result.results;
+        resultCount.textContent = `🤖 ${result.results.length} AI results`;
+        setViewMode('grid');
+      } else {
+        resultCount.textContent = '🤖 No AI results found';
+      }
+    } catch (err) {
+      showAlert('AI search failed: ' + err.message, { type: 'error', title: 'AI Error' });
+      resultCount.textContent = '';
+    }
+  }
+});
+
+// ============================================================
+// Time Travel
+// ============================================================
+
+let ttVersions = [];
+let ttCurrentIndex = 0;
+
+async function openTimeTravel(url) {
+  if (!url) return;
+  const modal = document.getElementById('time-travel-modal');
+
+  try {
+    const result = await sendMessage({ type: MSG.CHECK_URL_SNAPSHOTS, url });
+    const snapshots = (result.snapshots || []).sort((a, b) => a.timestamp - b.timestamp);
+
+    if (snapshots.length < 2) {
+      showAlert('Need at least 2 snapshots of this URL for Time Travel.', { type: 'info', title: 'Time Travel' });
+      return;
+    }
+
+    ttVersions = snapshots;
+    ttCurrentIndex = snapshots.length - 1;
+
+    // Update UI
+    document.getElementById('tt-url').textContent = url.length > 60 ? url.slice(0, 60) + '...' : url;
+    document.getElementById('tt-count').textContent = `${snapshots.length} versions`;
+
+    const slider = document.getElementById('tt-slider');
+    slider.max = snapshots.length - 1;
+    slider.value = snapshots.length - 1;
+
+    // Load first (oldest) on left, current on right
+    loadTTFrame('tt-frame-left', snapshots[0].id, 'tt-label-left', snapshots[0]);
+    loadTTFrame('tt-frame-right', snapshots[snapshots.length - 1].id, 'tt-label-right', snapshots[snapshots.length - 1]);
+    document.getElementById('tt-current-date').textContent = formatDate(snapshots[snapshots.length - 1].timestamp);
+
+    modal.classList.remove('hidden');
+  } catch (e) {
+    showAlert('Time Travel failed: ' + e.message, { type: 'error', title: 'Error' });
+  }
+}
+
+async function loadTTFrame(frameId, snapId, labelId, snap) {
+  try {
+    const data = await sendMessage({ type: MSG.GET_SNAPSHOT_DATA, id: snapId });
+    const iframe = document.getElementById(frameId);
+    const label = document.getElementById(labelId);
+    label.textContent = formatDate(snap.timestamp);
+
+    let html = '';
+    if (data.compressedHtml) {
+      const { decompressToString } = await import('../lib/utils.js');
+      html = await decompressToString(data.compressedHtml);
+    } else if (data.html) {
+      html = data.html;
+    }
+
+    iframe.srcdoc = html || '<p>No content</p>';
+  } catch (e) {
+    console.warn('[TT] Load frame failed:', e);
+  }
+}
+
+document.getElementById('tt-slider').addEventListener('input', (e) => {
+  const idx = parseInt(e.target.value, 10);
+  ttCurrentIndex = idx;
+  const snap = ttVersions[idx];
+  if (!snap) return;
+
+  document.getElementById('tt-current-date').textContent = formatDate(snap.timestamp);
+  loadTTFrame('tt-frame-right', snap.id, 'tt-label-right', snap);
+});
+
+document.getElementById('btn-close-tt').addEventListener('click', () => {
+  document.getElementById('time-travel-modal').classList.add('hidden');
+  document.getElementById('tt-frame-left').srcdoc = '';
+  document.getElementById('tt-frame-right').srcdoc = '';
+});
+
+document.getElementById('btn-tt-diff').addEventListener('click', () => {
+  if (ttVersions.length < 2) return;
+  const oldest = ttVersions[0];
+  const current = ttVersions[ttCurrentIndex];
+  const diffUrl = chrome.runtime.getURL(`diff/diff.html?left=${oldest.id}&right=${current.id}`);
+  chrome.tabs.create({ url: diffUrl });
+});
+
+document.getElementById('btn-tt-open').addEventListener('click', () => {
+  const snap = ttVersions[ttCurrentIndex];
+  if (!snap) return;
+  const url = chrome.runtime.getURL(`viewer/viewer.html?id=${encodeURIComponent(snap.id)}`);
+  chrome.tabs.create({ url });
+});
+
+// ============================================================
+// Session Replay
+// ============================================================
+
+let replaySnapshots = [];
+let replayIndex = 0;
+let replayTimer = null;
+let replayPlaying = false;
+
+async function openSessionReplay(sessionId) {
+  if (!sessionId) return;
+  const modal = document.getElementById('replay-modal');
+
+  try {
+    const result = await sendMessage({ type: MSG.GET_SESSION_SNAPSHOTS, sessionId });
+    const snapshots = (result.snapshots || result || []).sort((a, b) => a.timestamp - b.timestamp);
+
+    if (snapshots.length === 0) {
+      showAlert('No snapshots in this session.', { type: 'info', title: 'Session Replay' });
+      return;
+    }
+
+    replaySnapshots = snapshots;
+    replayIndex = 0;
+    replayPlaying = false;
+
+    document.getElementById('replay-session-info').textContent = `${snapshots.length} pages`;
+    document.getElementById('btn-replay-play').textContent = '▶️';
+
+    showReplayFrame(0);
+    modal.classList.remove('hidden');
+  } catch (e) {
+    showAlert('Session replay failed: ' + e.message, { type: 'error', title: 'Error' });
+  }
+}
+
+function showReplayFrame(index) {
+  const snap = replaySnapshots[index];
+  if (!snap) return;
+
+  const thumb = document.getElementById('replay-thumb');
+  const noThumb = document.getElementById('replay-no-thumb');
+
+  if (snap.thumbnailDataUrl) {
+    thumb.src = snap.thumbnailDataUrl;
+    thumb.classList.remove('hidden');
+    noThumb.classList.add('hidden');
+  } else {
+    thumb.classList.add('hidden');
+    noThumb.classList.remove('hidden');
+  }
+
+  document.getElementById('replay-title').textContent = snap.title || 'Untitled';
+  document.getElementById('replay-domain').textContent = getDomain(snap.url) || '';
+  document.getElementById('replay-time').textContent = formatDate(snap.timestamp);
+  document.getElementById('replay-position').textContent = `${index + 1}/${replaySnapshots.length}`;
+
+  const pct = replaySnapshots.length > 1 ? (index / (replaySnapshots.length - 1)) * 100 : 100;
+  document.getElementById('replay-progress').style.width = `${pct}%`;
+}
+
+function replayNext() {
+  if (replayIndex < replaySnapshots.length - 1) {
+    replayIndex++;
+    showReplayFrame(replayIndex);
+  } else {
+    stopReplay();
+  }
+}
+
+function replayPrev() {
+  if (replayIndex > 0) {
+    replayIndex--;
+    showReplayFrame(replayIndex);
+  }
+}
+
+function startReplay() {
+  replayPlaying = true;
+  document.getElementById('btn-replay-play').textContent = '⏸️';
+  const speed = parseInt(document.getElementById('replay-speed').value, 10);
+  replayTimer = setInterval(() => {
+    if (replayIndex < replaySnapshots.length - 1) {
+      replayIndex++;
+      showReplayFrame(replayIndex);
+    } else {
+      stopReplay();
+    }
+  }, speed);
+}
+
+function stopReplay() {
+  replayPlaying = false;
+  document.getElementById('btn-replay-play').textContent = '▶️';
+  if (replayTimer) {
+    clearInterval(replayTimer);
+    replayTimer = null;
+  }
+}
+
+document.getElementById('btn-replay-play').addEventListener('click', () => {
+  if (replayPlaying) stopReplay();
+  else startReplay();
+});
+
+document.getElementById('btn-replay-prev').addEventListener('click', () => { stopReplay(); replayPrev(); });
+document.getElementById('btn-replay-next').addEventListener('click', () => { stopReplay(); replayNext(); });
+
+document.getElementById('replay-speed').addEventListener('change', () => {
+  if (replayPlaying) {
+    stopReplay();
+    startReplay();
+  }
+});
+
+document.getElementById('btn-close-replay').addEventListener('click', () => {
+  stopReplay();
+  document.getElementById('replay-modal').classList.add('hidden');
+});
+
+document.getElementById('btn-replay-open').addEventListener('click', () => {
+  const snap = replaySnapshots[replayIndex];
+  if (!snap) return;
+  const url = chrome.runtime.getURL(`viewer/viewer.html?id=${encodeURIComponent(snap.id)}`);
+  chrome.tabs.create({ url });
+});
 
 // ============================================================
 // Init

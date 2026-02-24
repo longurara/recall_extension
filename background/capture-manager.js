@@ -40,29 +40,42 @@ function clearBadge(tabId, delay = 2000) {
  */
 async function captureDOMSnapshot(tabId) {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error('DOM capture timed out'));
-    }, 30000); // 30s timeout
+    const tryCapture = (retried = false) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('DOM capture timed out'));
+      }, 30000); // 30s timeout
 
-    chrome.tabs.sendMessage(tabId, { type: MSG.CAPTURE_DOM }, (response) => {
-      clearTimeout(timeout);
+      chrome.tabs.sendMessage(tabId, { type: MSG.CAPTURE_DOM }, (response) => {
+        clearTimeout(timeout);
 
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
+        if (chrome.runtime.lastError) {
+          // Content script not injected yet — inject and retry once
+          if (!retried && chrome.runtime.lastError.message.includes('Receiving end does not exist')) {
+            chrome.scripting.executeScript({
+              target: { tabId },
+              files: ['content/snapshot.js'],
+            }).then(() => {
+              setTimeout(() => tryCapture(true), 300);
+            }).catch(e => reject(new Error('Failed to inject content script: ' + e.message)));
+            return;
+          }
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
 
-      if (!response) {
-        reject(new Error('No response from content script'));
-        return;
-      }
+        if (!response) {
+          reject(new Error('No response from content script'));
+          return;
+        }
 
-      if (response.success) {
-        resolve(response.data);
-      } else {
-        reject(new Error(response.error || 'Unknown capture error'));
-      }
-    });
+        if (response.success) {
+          resolve(response.data);
+        } else {
+          reject(new Error(response.error || 'Unknown capture error'));
+        }
+      });
+    };
+    tryCapture();
   });
 }
 
@@ -328,6 +341,14 @@ export async function captureTab(tabId, captureType = CAPTURE_AUTO, flowMeta = n
       type: MSG.SNAPSHOT_SAVED,
       snapshot: metadata,
     }).catch(() => { }); // Ignore if no listeners
+
+    // AI Auto-Tag: fire-and-forget after capture (don't await — runs in background)
+    if (settings.aiAutoTagEnabled && settings.aiProvider && settings.aiProvider !== 'none' && settings.aiApiKey) {
+      chrome.runtime.sendMessage({
+        type: MSG.AI_AUTO_TAG,
+        id: metadata.id,
+      }).catch(() => { });
+    }
 
     return metadata;
   } catch (error) {

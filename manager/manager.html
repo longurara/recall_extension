@@ -16,6 +16,12 @@
       <span class="subtitle" data-i18n="mgr-subtitle">Snapshot Manager</span>
     </div>
     <div class="topbar-right">
+      <button id="btn-ai-chat" class="btn btn-ghost" title="AI Memory Chat">
+        🧠 AI Chat
+      </button>
+      <button id="btn-weekly-digest" class="btn btn-ghost" title="Weekly Digest">
+        📊 Digest
+      </button>
       <button id="btn-dashboard" class="btn btn-ghost">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor" opacity="0.3" stroke="currentColor"
@@ -134,6 +140,15 @@
             <rect x="10" y="8" width="2" height="2" rx="0.5" fill="currentColor" opacity="0.4" />
           </svg>
         </button>
+        <button id="btn-timeline" class="btn btn-view" title="Timeline view">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 1v14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            <circle cx="8" cy="3" r="1.5" fill="currentColor" />
+            <circle cx="8" cy="8" r="1.5" fill="currentColor" />
+            <circle cx="8" cy="13" r="1.5" fill="currentColor" />
+            <path d="M10 3h3M10 8h3M3 13h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+        </button>
         <button id="btn-trash" class="btn btn-view" title="Trash">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M2 4h12M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1" stroke="currentColor" stroke-width="1.5"
@@ -176,6 +191,114 @@
     <p data-i18n="mgr-no-snapshots-desc">Browse the web and pages will be automatically captured. You can also manually
       capture pages using the extension
       popup.</p>
+  </div>
+
+  <!-- AI Memory Chat Panel -->
+  <div id="ai-chat-panel" class="ai-chat-panel hidden">
+    <div class="ai-chat-header">
+      <div class="ai-chat-header-left">
+        <span class="ai-chat-icon">🧠</span>
+        <h3>Memory Assistant</h3>
+      </div>
+      <button id="btn-close-chat" class="btn btn-ghost-sm">&times;</button>
+    </div>
+    <div id="ai-chat-messages" class="ai-chat-messages">
+      <div class="ai-chat-welcome">
+        <span class="ai-chat-welcome-icon">🤖</span>
+        <p>Ask me anything about your browsing history!</p>
+        <div class="ai-chat-suggestions">
+          <button class="ai-suggestion" data-q="What did I read about today?">📖 What did I read today?</button>
+          <button class="ai-suggestion" data-q="Summarize my browsing this week">📊 Weekly summary</button>
+          <button class="ai-suggestion" data-q="Find articles about JavaScript">🔍 Find JS articles</button>
+        </div>
+      </div>
+    </div>
+    <div class="ai-chat-related" id="ai-chat-related"></div>
+    <div class="ai-chat-input-area">
+      <input type="text" id="ai-chat-input" placeholder="Ask about your browsing history..." autocomplete="off">
+      <button id="btn-ai-send" class="btn btn-primary-sm">Send</button>
+    </div>
+  </div>
+
+  <!-- Time Travel Modal -->
+  <div id="time-travel-modal" class="tt-overlay hidden">
+    <div class="tt-modal">
+      <div class="tt-header">
+        <div class="tt-header-left">
+          <span class="tt-icon">⏳</span>
+          <h2>Time Travel</h2>
+          <span id="tt-url" class="tt-url"></span>
+        </div>
+        <button id="btn-close-tt" class="btn btn-ghost-sm">&times;</button>
+      </div>
+      <div class="tt-body">
+        <div class="tt-panes">
+          <div class="tt-pane">
+            <div class="tt-pane-label" id="tt-label-left">Version A</div>
+            <iframe id="tt-frame-left" class="tt-frame" sandbox="allow-same-origin" frameborder="0"></iframe>
+          </div>
+          <div class="tt-divider"></div>
+          <div class="tt-pane">
+            <div class="tt-pane-label" id="tt-label-right">Version B</div>
+            <iframe id="tt-frame-right" class="tt-frame" sandbox="allow-same-origin" frameborder="0"></iframe>
+          </div>
+        </div>
+      </div>
+      <div class="tt-controls">
+        <div class="tt-slider-row">
+          <span class="tt-count" id="tt-count">0 versions</span>
+          <input type="range" id="tt-slider" class="tt-slider" min="0" max="1" value="0" step="1">
+          <span class="tt-date" id="tt-current-date"></span>
+        </div>
+        <div class="tt-actions">
+          <button id="btn-tt-diff" class="btn btn-primary-sm">🔀 Open Diff View</button>
+          <button id="btn-tt-open" class="btn btn-ghost-sm">🔗 Open in Viewer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Session Replay Modal -->
+  <div id="replay-modal" class="replay-overlay hidden">
+    <div class="replay-modal">
+      <div class="replay-header">
+        <div class="replay-header-left">
+          <span class="replay-icon">🎬</span>
+          <h2>Session Replay</h2>
+          <span id="replay-session-info" class="replay-session-info"></span>
+        </div>
+        <button id="btn-close-replay" class="btn btn-ghost-sm">&times;</button>
+      </div>
+      <div class="replay-body">
+        <div class="replay-stage">
+          <img id="replay-thumb" class="replay-thumb" src="" alt="">
+          <div id="replay-no-thumb" class="replay-no-thumb hidden">No thumbnail available</div>
+        </div>
+        <div class="replay-info-bar">
+          <span id="replay-title" class="replay-title"></span>
+          <span id="replay-domain" class="replay-domain"></span>
+          <span id="replay-time" class="replay-time"></span>
+        </div>
+      </div>
+      <div class="replay-controls">
+        <div class="replay-progress-bar">
+          <div id="replay-progress" class="replay-progress" style="width:0%"></div>
+        </div>
+        <div class="replay-btn-row">
+          <button id="btn-replay-prev" class="btn btn-ghost-sm" title="Previous">⏮</button>
+          <button id="btn-replay-play" class="btn btn-primary-sm" title="Play/Pause">▶️</button>
+          <button id="btn-replay-next" class="btn btn-ghost-sm" title="Next">⏭</button>
+          <span id="replay-position" class="replay-position">0/0</span>
+          <select id="replay-speed" class="replay-speed">
+            <option value="3000">0.5×</option>
+            <option value="2000" selected>1×</option>
+            <option value="1000">2×</option>
+            <option value="500">3×</option>
+          </select>
+          <button id="btn-replay-open" class="btn btn-ghost-sm" title="Open in Viewer">🔗 Open</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Footer -->

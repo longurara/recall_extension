@@ -5,6 +5,7 @@
   "description": "Auto-save & recall web pages. View snapshots anytime, even offline.",
   "permissions": [
     "pageCapture",
+    "scripting",
     "activeTab",
     "tabs",
     "webNavigation",
@@ -84,6 +85,9 @@
   ],
   "side_panel": {
     "default_path": "sidepanel/sidepanel.html"
+  },
+  "chrome_url_overrides": {
+    "newtab": "newtab/newtab.html"
   },
   "action": {
     "default_title": "Recall - Web Page Snapshots",

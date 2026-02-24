@@ -89,7 +89,7 @@ document.getElementById('btn-deep-capture').addEventListener('click', async () =
   btn.textContent = t('popup-deep-capturing');
 
   try {
-    await sendMessage({ type: MSG.CAPTURE_DEEP });
+    await sendMessage({ type: MSG.CAPTURE_DEEP, userGesture: true });
     btn.textContent = t('popup-done');
     setTimeout(() => window.close(), 1000);
   } catch (e) {
